@@ -143,3 +143,14 @@ with renderer:
     renderer.save_frame(shape)
 renderer.compile(output_path)
 ```
+
+# Citations
+~~~
+@software{synth2022anim,
+  author = {Synthbot, PluieElectrique},
+  title = {{xflsvg - /mlp/ Pony Preservation Project}},
+  url = {https://github.com/synthbot-anon/xflsvg},
+  version = {1.0.0},
+  year = {2022}
+}
+~~~
