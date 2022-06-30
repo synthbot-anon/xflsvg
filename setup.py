@@ -54,6 +54,7 @@ SOFTWARE.
     install_requires=[
             'bs4',
             'lxml',
+            'numpy',
             'xfl2svg @ git+https://github.com/synthbot-anon/PluieElectrique-xfl2svg.git',
             'kdtree @ git+https://github.com/synthbot-anon/Vectorized-Python-KD-Tree.git'
     ],
