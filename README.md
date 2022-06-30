@@ -5,7 +5,10 @@ This project exists to turn XFL files into data suitable for animation AI. It ha
 2. Convert render traces into other formats (currently only SVG sequences).
 
 # Installation
-`pip install 'git+git@github.com:synthbot-anon/xflsvg.git'`
+```
+pip install 'git+git@github.com:synthbot-anon/xflsvg.git'
+python -m xflsvg --help
+```
 
 # Usage
 
