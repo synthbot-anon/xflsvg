@@ -1,0 +1,30 @@
+<DOMDocument xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://ns.adobe.com/xfl/2008/" width="1280" height="720" frameRate="30" currentTimeline="1" xflVersion="2.980" creatorInfo="Adobe Animate" platform="Windows" versionInfo="Saved by Animate Windows 21.0 build 40714" majorVersion="21" buildNumber="40714" viewAngle3D="100.925968316201" vanishingPoint3DX="640" vanishingPoint3DY="360" nextSceneIdentifier="2" playOptionsPlayLoop="false" playOptionsPlayPages="false" playOptionsPlayFrameActions="false" filetypeGUID="DD0DDBBF-5BEF-45B2-9F24-A3048D2A676F" fileGUID="84D2BFFA4859CF4DA53469426B617DF8">
+     <symbols>
+          <Include href="SymbolName.xml" itemIcon="1" loadImmediate="false" itemID="4f81e578-00000bd1" lastModified="1626851043"/>
+     </symbols>
+     <timelines>
+          <DOMTimeline name="Scene 1" layerDepthEnabled="true">
+               <layers>
+                    <DOMLayer name="Layer_1" color="#00FFFF" current="true" isSelected="true">
+                         <frames>
+                              <DOMFrame index="0" keyMode="9728">
+                                   <elements>
+                                        <DOMSymbolInstance libraryItemName="SymbolName" selected="true" symbolType="graphic" loop="loop">
+                                             <matrix>
+                                                  <Matrix tx="639.75" ty="357.3"/>
+                                             </matrix>
+                                             <transformationPoint>
+                                                  <Point x="0.7" y="2.5"/>
+                                             </transformationPoint>
+                                        </DOMSymbolInstance>
+                                   </elements>
+                              </DOMFrame>
+                         </frames>
+                    </DOMLayer>
+               </layers>
+          </DOMTimeline>
+     </timelines>
+     <scripts/>
+     <PrinterSettings/>
+     <publishHistory/>
+</DOMDocument>
