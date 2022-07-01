@@ -737,8 +737,6 @@ class DOMFrame(AnimationObject, FrameContext):
             end_element = list(
                 filter(lambda x: isinstance(x, DOMShape), nextFrame.elements)
             )
-            assert len(start_element) == 1, self.xmlnode
-            assert len(end_element) == 1, nextFrame.xmlnode
 
             element_tweens = []
 
