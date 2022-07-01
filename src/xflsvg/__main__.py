@@ -11,6 +11,9 @@ from .svgrenderer import SvgRenderer
 from .xflsvg import XflReader
 
 
+# known buggy files: MLP509_414
+
+
 def as_number(data):
     bytes = hashlib.sha512(data.encode("utf8")).digest()[:8]
     return int.from_bytes(bytes, byteorder="big")

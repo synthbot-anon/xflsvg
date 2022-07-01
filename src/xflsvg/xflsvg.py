@@ -590,31 +590,38 @@ def _get_eases(xmlnode):
     return result
 
 
-def shape_tween(domshape, svg_frames):
+def shape_tween(element_tweens):
     @contextmanager
     def _tween(n):
-        initial_frame = domshape.svg_frame
+        initial_frames = [x.svg_frame for x, y in element_tweens]
         try:
-            domshape.svg_frame = svg_frames[n]
+            for domshape, svg_frames in element_tweens:
+                domshape.svg_frame = svg_frames[n]
             yield
         finally:
-            domshape.svg_frame = initial_frame
+            for i, data in enumerate(element_tweens):
+                domshape, svg_frames = data
+                domshape.svg_frame = initial_frames[i]
 
     return _tween
 
 
-def motion_tween(domsymbol, matrices, colors):
+def motion_tween(element_tweens):
     @contextmanager
     def _tween(n):
-        initial_matrix = domsymbol.matrix
-        initial_color = domsymbol.color
+        initial_matrices = [x.matrix for x, y, z in element_tweens]
+        initial_colors = [x.color for x, y, z in element_tweens]
+
         try:
-            domsymbol.matrix = matrices[n]
-            domsymbol.color = colors[n]
+            for domsymbol, matrices, colors in element_tweens:
+                domsymbol.matrix = matrices[n]
+                domsymbol.color = colors[n]
             yield
         finally:
-            domsymbol.matrix = initial_matrix
-            domsymbol.color = initial_color
+            for i, data in enumerate(element_tweens):
+                domsymbol, matrices, colors = data
+                domsymbol.matrix = initial_matrices[i]
+                domsymbol.color = initial_colors[i]
 
     return _tween
 
@@ -696,28 +703,27 @@ class DOMFrame(AnimationObject, FrameContext):
             if not start_element or not end_element:
                 return
 
-            assert len(start_element) == 1, self.xmlnode
-            assert len(end_element) == 1, nextFrame.xmlnode
-            start_element = start_element[0]
-            end_element = end_element[0]
+            element_tweens = []
+            for start, end in zip(start_element, end_element):
+                matrices = list(
+                    matrix_interpolation(
+                        start.matrix,
+                        end.matrix,
+                        self.duration + 1,
+                        self.eases,
+                    )
+                )
+                colors = list(
+                    color_interpolation(
+                        start.color,
+                        end.color,
+                        self.duration + 1,
+                        self.eases,
+                    )
+                )
 
-            matrices = list(
-                matrix_interpolation(
-                    start_element.matrix,
-                    end_element.matrix,
-                    self.duration + 1,
-                    self.eases,
-                )
-            )
-            colors = list(
-                color_interpolation(
-                    start_element.color,
-                    end_element.color,
-                    self.duration + 1,
-                    self.eases,
-                )
-            )
-            self.tween = motion_tween(start_element, matrices, colors)
+                element_tweens.append((start, matrices, colors))
+            self.tween = motion_tween(element_tweens)
             return
         elif self.tween_type == "shape":
             segment_xmlnodes = self.xmlnode.findChildren("MorphSegment")
@@ -733,31 +739,35 @@ class DOMFrame(AnimationObject, FrameContext):
             )
             assert len(start_element) == 1, self.xmlnode
             assert len(end_element) == 1, nextFrame.xmlnode
-            start_element = start_element[0]
-            end_element = end_element[0]
 
-            shape_data = list(
-                shape_interpolation(
-                    segment_xmlnodes,
-                    start_element,
-                    end_element,
-                    self.duration + 1,
-                    self.eases,
+            element_tweens = []
+
+            for start, end in zip(start_element, end_element):
+                shape_data = list(
+                    shape_interpolation(
+                        segment_xmlnodes,
+                        start,
+                        end,
+                        self.duration + 1,
+                        self.eases,
+                    )
                 )
-            )
-            shapes = []
-            for i, data in enumerate(shape_data):
-                shape_frame = self.xflsvg.get_shape(
-                    data,
-                    self.asset.id,
-                    self.layer.index,
-                    self.start_frame_index + i,
-                    (0,),
-                )
-                shape_frame.owner_element = self
-                shape_frame.frame_index = i + self.start_frame_index
-                shapes.append(shape_frame)
-            self.tween = shape_tween(start_element, shapes)
+                shapes = []
+                for i, data in enumerate(shape_data):
+                    shape_frame = self.xflsvg.get_shape(
+                        data,
+                        self.asset.id,
+                        self.layer.index,
+                        self.start_frame_index + i,
+                        (0,),
+                    )
+                    shape_frame.owner_element = self
+                    shape_frame.frame_index = i + self.start_frame_index
+                    shapes.append(shape_frame)
+
+                element_tweens.append((start, shapes))
+
+            self.tween = shape_tween(element_tweens)
             return
 
         raise Exception("cannot init tween with tween_type ==", self.tween_type)
