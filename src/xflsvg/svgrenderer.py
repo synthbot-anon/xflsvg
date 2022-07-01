@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
 
 from .tweens import get_color_map
-from .xflsvg import XflReader, XflRenderer
+from .xflsvg import XflRenderer
 from xfl2svg.shape.shape import xfl_domshape_to_svg
 
 
@@ -49,76 +49,6 @@ def color_to_svg_filter(color):
     )
 
     return filter
-
-
-def _with_border(domshape):
-    soup = BeautifulSoup(domshape, "xml").DOMShape
-
-    if soup.fills:
-        fills = get_color_map(soup.fills, "FillStyle")
-    else:
-        fills = {}
-
-    if soup.strokes:
-        strokes = get_color_map(soup.strokes, "StrokeStyle")
-    else:
-        strokes = {}
-        new_strokes = BeautifulSoup(
-            """
-            <strokes />
-        """,
-            "xml",
-        )
-        soup.append(new_strokes)
-
-    reverse_strokes_map = dict([(x[1], x[0]) for x in strokes.items()])
-
-    modified = False
-    for edge in soup.edges.findChildren("Edge", recursive=False):
-        if edge.get("strokeStyle"):
-            continue
-
-        fillStyle0 = edge.get("fillStyle0")
-        fillStyle1 = edge.get("fillStyle1")
-        if not fillStyle0 and not fillStyle1:
-            continue
-
-        useFillStyle = int(fillStyle0 or fillStyle1)
-        color = fills[useFillStyle]
-        stroke_index = reverse_strokes_map.get(color, None)
-        if not stroke_index:
-            stroke_index = len(strokes) + 1
-
-            color_attr = f'color="{color[0]}"'
-            alpha_attr = ""
-            if color[1] != 1:
-                alpha_attr = f'alpha="{color[1]}"'
-
-            new_stroke = BeautifulSoup(
-                f"""
-                    <StrokeStyle index="{stroke_index}">
-                        <SolidStroke scaleMode="normal" caps="none" vectorEffect="non-scaling-stroke" weight="0.1">
-                            <fill>
-                                <SolidColor {color_attr} {alpha_attr} />
-                            </fill>
-                        </SolidStroke>
-                    </StrokeStyle>
-
-                """,
-                "xml",
-            )
-
-            soup.strokes.append(new_stroke.StrokeStyle)
-            strokes[stroke_index] = color
-            reverse_strokes_map[color] = stroke_index
-
-        edge["strokeStyle"] = str(stroke_index)
-        modified = True
-
-    if not modified:
-        return domshape
-
-    return str(soup)
 
 
 class SvgRenderer(XflRenderer):

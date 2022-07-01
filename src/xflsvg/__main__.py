@@ -11,7 +11,7 @@ from .svgrenderer import SvgRenderer
 from .xflsvg import XflReader
 
 
-# known buggy files: MLP509_414
+# known buggy files: MLP509_414 (tween), MLP422_593 and MLP509_056 (shape), MLP509_275 (stroke id)
 
 
 def as_number(data):
