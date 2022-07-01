@@ -6,8 +6,8 @@ This project exists to turn XFL files into data suitable for animation AI. It ha
 
 # Installation
 ```
-pip install 'git+git@github.com:synthbot-anon/xflsvg.git'
-python -m xflsvg --help
+pip install 'git+https://github.com/synthbot-anon/xflsvg.git'
+python3 -m xflsvg --help
 ```
 
 # Usage
@@ -17,7 +17,7 @@ python -m xflsvg --help
 Command line:
 
 ```
-$ python -m xflsvg input-file.xfl output-trace-folder/
+$ python3 -m xflsvg input-file.xfl output-trace-folder/
 ```
 
 Python:
@@ -44,7 +44,7 @@ Command line:
 ```
 # This will output a sequence of SVGs.
 # Each SVG file will be given a 4-digit frame suffix.
-$ python -m xflsvg trace-folder/ output.svg
+$ python3 -m xflsvg trace-folder/ output.svg
 ```
 
 Python:
@@ -69,7 +69,7 @@ renderer.compile(output_path)
 Command line:
 
 ```
-$ python -m xflsvg input.xfl output.svg
+$ python3 -m xflsvg input.xfl output.svg
 ```
 
 Python:
@@ -105,7 +105,7 @@ frame     0   1   2   3   4   5   6   7  8 ...
 layer 1 |                                                   |
 layer 2 |                                                   |
 layer 3 |                                                   |
-layer 3 |                                                   |
+layer 4 |                                                   |
          ----------------------------------------------------
 ```
 
