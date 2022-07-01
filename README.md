@@ -33,7 +33,6 @@ timeline = reader.get_timeline()
 with renderer:
     for frame in list(timeline):
         frame.render()
-        renderer.save_frame(frame)
 renderer.compile(output_path)
 ```
 
@@ -60,7 +59,6 @@ timeline = reader.get_timeline()
 with renderer:
     for frame in list(timeline):
         frame.render()
-        renderer.save_frame(frame)
 renderer.compile(output_path)
 ```
 
@@ -85,7 +83,6 @@ timeline = reader.get_timeline()
 with renderer:
     for frame in list(timeline):
         frame.render()
-        renderer.save_frame(frame)
 renderer.compile(output_path)
 ```
 
@@ -140,7 +137,6 @@ renderer = SvgRenderer()
 
 with renderer:
     shape.render()
-    renderer.save_frame(shape)
 renderer.compile(output_path)
 ```
 

@@ -34,6 +34,21 @@ class RenderTracer(XflRenderer):
     def on_frame_rendered(self, frame, *args, **kwargs):
         if frame.data:
             self.labels.setdefault(frame.identifier, {}).update(frame.data)
+        
+        if len(self.context) != 1:
+            return
+
+        children = self.context[0]
+
+        if len(children) > 1:
+            frame_data = {"children": children}
+            render_index = consume_frame_identifier()
+            self.frames[render_index] = frame_data
+        else:
+            render_index = children[0]
+
+        self._captured_frames.append(render_index)
+        self.context = [[]]
 
     def render_shape(self, shape_snapshot, *args, **kwargs):
         self.shapes[shape_snapshot.identifier] = shape_snapshot.domshape
@@ -82,20 +97,6 @@ class RenderTracer(XflRenderer):
         render_index = consume_frame_identifier()
         self.frames[render_index] = frame_data
         self.context[-1].append(render_index)
-
-    def save_frame(self, frame=None):
-        assert len(self.context) == 1
-        children = self.context[0]
-
-        if len(children) > 1:
-            frame_data = {"children": children}
-            render_index = consume_frame_identifier()
-            self.frames[render_index] = frame_data
-        else:
-            render_index = children[0]
-
-        self._captured_frames.append(render_index)
-        self.context = [[]]
 
     def set_box(*args, **kwargs):
         pass

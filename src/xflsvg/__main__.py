@@ -67,7 +67,6 @@ def convert(input_path, output_path, args):
         with renderer:
             for frame in list(timeline):
                 frame.render()
-                renderer.save_frame(frame)
 
         renderer.compile(output_path, padding=args.padding, scale=args.scale)
     except:

@@ -138,6 +138,7 @@ class Frame:
         self.children = children or []
         self.data = {}
         self._box = None
+        self.parent = None
 
     def add_child(self, child_frame):
         self.children.append(child_frame)
@@ -399,7 +400,9 @@ class DOMSymbolInstance(Element):
 
     def __getitem__(self, iteration: int) -> Frame:
         if not self.target_asset:
-            return Frame()
+            result = Frame()
+            result.parent = self
+            return result
 
         if self.loop_type in ("single frame", None):
             frame_index = self.first_frame
@@ -416,6 +419,7 @@ class DOMSymbolInstance(Element):
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
         )
+        result.parent = self
         return result
 
     def __len__(self) -> int:
@@ -443,6 +447,7 @@ class DOMShape(Element):
 
     def __getitem__(self, iteration: int) -> Frame:
         result = _transformed_frame(self.svg_frame, self.matrix, self.color)
+        result.parent = self
         return result
 
     def __len__(self) -> int:
@@ -508,6 +513,7 @@ class DOMGroup(Element, FrameContext):
 
     def __getitem__(self, iteration: int) -> Frame:
         result = Frame(color=self.color)
+        result.parent = self
         for child in self.elements:
             result.add_child(child[iteration])
 
@@ -775,6 +781,7 @@ class DOMFrame(AnimationObject, FrameContext):
             return self._frames[frame_index]
 
         new_frame = Frame()
+        new_frame.parent = self
         iteration = frame_index - self.start_frame_index
 
         if not self.has_index(frame_index):
@@ -855,6 +862,7 @@ class Layer(AnimationObject):
             return self._frames[frame_index]
 
         new_frame = Frame()
+        new_frame.parent = self
         new_frame.data["layer"] = self.name or ""
         new_frame.data["frame"] = frame_index
 
@@ -902,6 +910,7 @@ class Asset(AnimationObject):
             return self._frames[frame_index]
 
         new_frame = Frame()
+        new_frame.parent = self
         new_frame.data["timeline"] = self.id
         new_frame.data["frame"] = frame_index
         if self.width:

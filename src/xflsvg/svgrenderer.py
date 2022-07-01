@@ -160,7 +160,10 @@ class SvgRenderer(XflRenderer):
         masked_items = self.context[-1][-1]
         masked_items.extend(children)
 
-    def save_frame(self, frame):
+    def on_frame_rendered(self, frame, *args, **kwargs):
+        if len(self.context) != 1:
+            return
+
         self._captured_frames.append([self.defs, self.context])
         self.defs = {}
         self.context = [
