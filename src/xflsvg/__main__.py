@@ -36,27 +36,24 @@ def convert(input_path, output_path, args):
     output_path = os.path.normpath(output_path)
     if output_path.lower().endswith(".svg"):
         renderer = SvgRenderer()
-        parent_dir = os.path.dirname(output_path)
-        if parent_dir:
-            os.makedirs(parent_dir, exist_ok=True)
-        logging.basicConfig(
-            filename=os.path.join(parent_dir, "logs.txt"),
-            level=logging.DEBUG,
-            force=True,
-        )
+        output_folder = os.path.dirname(output_path)
+
     elif os.path.isdir(output_path) or not os.path.exists(output_path):
         renderer = RenderTracer()
-        os.makedirs(output_path, exist_ok=True)
-        logging.basicConfig(
-            filename=os.path.join(output_path, "logs.txt"),
-            level=logging.DEBUG,
-            force=True,
-        )
+        output_folder = output_path
     else:
         raise Exception(
             "The output needs to be either an svg path (/path/to/file.svg) or a render trace (/path/to/folder)."
         )
 
+    if output_folder:
+        os.makedirs(output_folder, exist_ok=True)
+
+    logging.basicConfig(
+        filename=os.path.join(output_folder, "logs.txt"),
+        level=logging.DEBUG,
+        force=True,
+    )
     logging.captureWarnings(True)
 
     if args.use_camera:
@@ -70,9 +67,8 @@ def convert(input_path, output_path, args):
                 renderer.save_frame(frame)
 
         renderer.compile(output_path, padding=args.padding, scale=args.scale)
-        print("done")
     except:
-        print("error in", output_path, "- check logs.txt in the output folder for details.")
+        print(f"error - check {output_folder}/logs.txt for details.")
         logging.exception(traceback.format_exc())
 
 

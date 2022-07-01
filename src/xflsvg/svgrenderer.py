@@ -306,6 +306,7 @@ def _expand_box(orig, addition):
     orig[3] = max(orig[3], addition[3])
     return orig
 
+
 def splitext(path):
     folder, filename = os.path.split(path)
     if "." in filename:
