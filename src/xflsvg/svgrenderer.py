@@ -279,7 +279,7 @@ class SvgRenderer(XflRenderer):
             image = ET.ElementTree(svg)
 
             if output_filename:
-                name, ext = os.path.splitext(output_filename)
+                name, ext = splitext(output_filename)
                 with open(f'{name}{"%04d" % i}{ext}', "w") as outp:
                     image.write(outp, encoding="unicode")
 
@@ -305,3 +305,10 @@ def _expand_box(orig, addition):
     orig[2] = max(orig[2], addition[2])
     orig[3] = max(orig[3], addition[3])
     return orig
+
+def splitext(path):
+    folder, filename = os.path.split(path)
+    if "." in filename:
+        name, ext = filename.rsplit(".", maxsplit=1)
+        return os.path.join(folder, name), f".{ext}"
+    return path, ""

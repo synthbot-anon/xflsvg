@@ -21,11 +21,10 @@ def should_process(data, args):
 
 
 def convert(input_path, output_path, args):
-    print("converting", input_path, "->", output_path, end="... ")
+    print("converting", input_path, "->", output_path)
     input_path = os.path.normpath(input_path)
     if input_path.lower().endswith(".xfl"):
         input_folder = os.path.dirname(input_path)
-        print("reading from", input_folder)
         reader = XflReader(input_folder)
     elif os.path.isdir(input_path):
         reader = RenderTraceReader(input_path)
@@ -73,7 +72,7 @@ def convert(input_path, output_path, args):
         renderer.compile(output_path, padding=args.padding, scale=args.scale)
         print("done")
     except:
-        print("error. Check logs.txt in the output folder for details.")
+        print("error in", output_path, "- check logs.txt in the output folder for details.")
         logging.exception(traceback.format_exc())
 
 
