@@ -1,3 +1,4 @@
+from collections import defaultdict
 from contextlib import contextmanager
 import json
 import os
@@ -34,7 +35,7 @@ class RenderTracer(XflRenderer):
     def on_frame_rendered(self, frame, *args, **kwargs):
         if frame.data:
             self.labels.setdefault(frame.identifier, {}).update(frame.data)
-        
+
         if len(self.context) != 1:
             return
 
@@ -124,6 +125,7 @@ class RenderTraceReader:
             self.labels = json.load(inp)
         self.frame_cache = {}
         self._box = None
+        self._reversed_frames = None
 
     def get_camera(self):
         if self._box:
@@ -171,23 +173,45 @@ class RenderTraceReader:
 
         result = sorted(result, key=lambda x: x[1])
         for frame_id, i in result:
-            yield self.get_table_frame(frame_id)
+            r = self.get_table_frame(frame_id)
+            yield r
+
+    def get_scene_containers(self, frame):
+        if not self._reversed_frames:
+            self._reversed_frames = defaultdict(set)
+            for parent_str, data in self.frames.items():
+                for child in data["children"]:
+                    self._reversed_frames[child].add(int(parent_str))
+
+        pending = set([frame.identifier])
+        while pending:
+            next_child = pending.pop()
+            parents = self._reversed_frames[next_child]
+            for p in parents:
+                p_str = str(p)
+                if p_str in self.labels and "timeline" in self.labels[p_str]:
+                    timeline = self.labels[p_str]["timeline"]
+                    if timeline.startswith("file://"):
+                        yield timeline
+            pending.update(parents)
 
     def get_table_frame(self, render_index):
-        if str(render_index) in self.shapes:
-            domshape = self.shapes[str(render_index)]
+        render_index_str = str(render_index)
+
+        if render_index_str in self.shapes:
+            domshape = self.shapes[render_index_str]
             shape = ShapeFrame(domshape)
             shape.identifier = render_index
             self.frame_cache[render_index] = shape
             return shape
         else:
-            frame_data = self.frames[str(render_index)]
+            frame_data = self.frames[render_index_str]
             children = [self.get_table_frame(x) for x in frame_data["children"]]
 
             if "mask" in frame_data:
                 mask = self.get_table_frame(frame_data["mask"])
                 frame = MaskedFrame(mask, children)
-                frame.identifier = int(render_index)
+                frame.identifier = render_index
                 self.frame_cache[render_index] = frame
                 return frame
 
@@ -195,7 +219,28 @@ class RenderTraceReader:
             filter = frame_data.get("filter", None)
             if filter:
                 filter = ColorObject(*filter["multiply"], *filter["shift"])
-            frame = Frame(transform, filter, children)
-            frame.identifier = int(render_index)
+
+            element_type = None
+            element_id = None
+            if render_index_str in self.labels:
+                data = self.labels[render_index_str]
+                if "layer" in data:
+                    element_type = "layer"
+                    element_id = data["layer"]
+                elif "timeline" in data:
+                    if data["timeline"].startswith("file://"):
+                        element_type = "scene"
+                    else:
+                        element_type = "asset"
+                    element_id = data["timeline"]
+
+            frame = Frame(
+                transform,
+                filter,
+                children,
+                element_type=element_type,
+                element_id=element_id,
+            )
+            frame.identifier = render_index
             self.frame_cache[render_index] = frame
             return frame

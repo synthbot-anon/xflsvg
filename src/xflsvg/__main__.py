@@ -8,6 +8,7 @@ import traceback
 
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
+from .samplerenderer import SampleRenderer
 from .xflsvg import XflReader
 
 
@@ -40,7 +41,10 @@ def convert(input_path, output_path, args):
     if output_path.lower().endswith(".svg"):
         renderer = SvgRenderer()
         output_folder = os.path.dirname(output_path)
-
+    elif output_path.lower().endswith(".samples"):
+        renderer = SampleRenderer()
+        output_folder = splitext(output_path)[0]
+        output_path = output_folder
     elif os.path.isdir(output_path) or not os.path.exists(output_path):
         renderer = RenderTracer()
         output_folder = output_path
@@ -68,7 +72,9 @@ def convert(input_path, output_path, args):
             for frame in list(timeline):
                 frame.render()
 
-        renderer.compile(output_path, padding=args.padding, scale=args.scale)
+        renderer.compile(
+            output_path, reader=reader, padding=args.padding, scale=args.scale
+        )
     except:
         print(f"error - check {output_folder}/logs.txt for details.")
         logging.exception(traceback.format_exc())
@@ -156,7 +162,11 @@ def main():
     target_type = target_type.lower()
 
     assert source_type in (".xfl", ""), "Input arg must end in either .xfl or /"
-    assert target_type in (".svg", ""), "Output arg must end in either .svg or /"
+    assert target_type in (
+        ".svg",
+        ".samples",
+        "",
+    ), "Output arg must end in either .svg or /"
 
     for root, dirs, files in os.walk(input_folder):
         for fn in files:

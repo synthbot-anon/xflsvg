@@ -128,7 +128,9 @@ def _expand_box(orig, addition):
 
 
 class Frame:
-    def __init__(self, matrix=None, color=None, children=None):
+    def __init__(
+        self, matrix=None, color=None, children=None, element_type=None, element_id=None
+    ):
         global _frame_index
         self.identifier = _frame_index
         _frame_index += 1
@@ -138,7 +140,8 @@ class Frame:
         self.children = children or []
         self.data = {}
         self._box = None
-        self.parent = None
+        self.element_type = element_type
+        self.element_id = element_id
 
     def add_child(self, child_frame):
         self.children.append(child_frame)
@@ -400,9 +403,7 @@ class DOMSymbolInstance(Element):
 
     def __getitem__(self, iteration: int) -> Frame:
         if not self.target_asset:
-            result = Frame()
-            result.parent = self
-            return result
+            return Frame()
 
         if self.loop_type in ("single frame", None):
             frame_index = self.first_frame
@@ -419,7 +420,6 @@ class DOMSymbolInstance(Element):
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
         )
-        result.parent = self
         return result
 
     def __len__(self) -> int:
@@ -447,7 +447,6 @@ class DOMShape(Element):
 
     def __getitem__(self, iteration: int) -> Frame:
         result = _transformed_frame(self.svg_frame, self.matrix, self.color)
-        result.parent = self
         return result
 
     def __len__(self) -> int:
@@ -513,7 +512,6 @@ class DOMGroup(Element, FrameContext):
 
     def __getitem__(self, iteration: int) -> Frame:
         result = Frame(color=self.color)
-        result.parent = self
         for child in self.elements:
             result.add_child(child[iteration])
 
@@ -781,7 +779,6 @@ class DOMFrame(AnimationObject, FrameContext):
             return self._frames[frame_index]
 
         new_frame = Frame()
-        new_frame.parent = self
         iteration = frame_index - self.start_frame_index
 
         if not self.has_index(frame_index):
@@ -861,8 +858,7 @@ class Layer(AnimationObject):
         if frame_index in self._frames:
             return self._frames[frame_index]
 
-        new_frame = Frame()
-        new_frame.parent = self
+        new_frame = Frame(element_type="layer", element_id=self.name)
         new_frame.data["layer"] = self.name or ""
         new_frame.data["frame"] = frame_index
 
@@ -909,8 +905,12 @@ class Asset(AnimationObject):
         if frame_index in self._frames:
             return self._frames[frame_index]
 
-        new_frame = Frame()
-        new_frame.parent = self
+        if isinstance(self, Document):
+            element_type = "scene"
+        else:
+            element_type = "asset"
+
+        new_frame = Frame(element_type=element_type, element_id=self.id)
         new_frame.data["timeline"] = self.id
         new_frame.data["frame"] = frame_index
         if self.width:
@@ -1046,6 +1046,11 @@ class XflReader:
         result = ShapeFrame(str(xmlnode))
         self._shapes[key] = result
         return result
+
+    def get_scene_containers(self, frame):
+        if frame.element_id not in self._assets:
+            return None
+        yield self.get_timeline().id
 
 
 class XflRenderer:

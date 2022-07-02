@@ -181,7 +181,9 @@ class SvgRenderer(XflRenderer):
         self.force_width = width
         self.force_height = height
 
-    def compile(self, output_filename=None, scale=1, padding=0):
+    def compile(
+        self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
+    ):
         result = []
         box = self.box or [0, 0, 0, 0]
 
@@ -213,10 +215,14 @@ class SvgRenderer(XflRenderer):
 
             if output_filename:
                 name, ext = splitext(output_filename)
-                with open(f'{name}{"%04d" % i}{ext}', "w") as outp:
+                sfx = suffix and "%04d" % i or ""
+                with open(f"{name}{sfx}{ext}", "w") as outp:
                     image.write(outp, encoding="unicode")
 
             result.append(image)
+
+        self._captured_frames = []
+        self.box = None
 
         return result
 
