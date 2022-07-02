@@ -126,25 +126,6 @@ class SampleRenderer(XflRenderer):
             renderer.compile(destination, suffix=False, *args, **kwargs)
 
 
-def _conditional(forced_value, calculated_value):
-    if forced_value != None:
-        return forced_value
-    return calculated_value
-
-
-def _expand_box(orig, addition):
-    if addition == None:
-        return orig
-    if orig == None:
-        return addition
-
-    orig[0] = min(orig[0], addition[0])
-    orig[1] = min(orig[1], addition[1])
-    orig[2] = max(orig[2], addition[2])
-    orig[3] = max(orig[3], addition[3])
-    return orig
-
-
 def splitext(path):
     folder, filename = os.path.split(path)
     if "." in filename:
