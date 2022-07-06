@@ -27,6 +27,8 @@ class AssetFilter:
             self._render_allowed = False
         else:
             self.check_fn = lambda x: True
+            self._render_allowed = True
+            self._default_render = True
 
     def allow_asset(self, fla, asset):
         return self.check_fn((fla, asset))
