@@ -2,10 +2,12 @@ from collections import defaultdict
 import math
 import os
 import re
+import shutil
 
 import xml.etree.ElementTree as ET
 
 from .svgrenderer import SvgRenderer
+from .util import splitext
 from .xflsvg import XflRenderer, Asset
 
 _EXPLICIT_FLA = re.compile(r"f-(.*)\.(fla|xfl)", re.IGNORECASE)
@@ -83,13 +85,19 @@ def extract_symbol_name(full_path):
 
 
 def extract_ids(filepath):
-    full_path = os.path.abspath(filepath)
-
     name = splitext(filepath)[0]
     frame_start = name.rfind("_f") + 2
-    frame = int(name[frame_start:])
+    frame_end = name.find(".", frame_start)
+    if not name[frame_start:frame_end]:
+        frame = 0
+    else:
+        frame = int(name[frame_start:frame_end])
 
-    return extract_fla_name(full_path), extract_symbol_name(full_path), frame
+    modified_path = (
+        f"{name[:frame_start-2]}.sym_f{frame}"  # I messed up some file names
+    )
+    result = extract_fla_name(filepath), extract_symbol_name(modified_path), frame
+    return result
 
 
 class SampleRenderer(XflRenderer):
@@ -118,7 +126,7 @@ class SampleRenderer(XflRenderer):
             with renderer:
                 selected_frame.render()
 
-            scene = next(iter(reader.get_scene_containers(selected_frame)))
+            scene = next(iter(reader.get_scenes(selected_frame)))
             source = scene[8:].split("/")[0]
             filename = create_filename(source, asset_id, idx)
 
@@ -126,9 +134,32 @@ class SampleRenderer(XflRenderer):
             renderer.compile(destination, suffix=False, *args, **kwargs)
 
 
-def splitext(path):
-    folder, filename = os.path.split(path)
-    if "." in filename:
-        name, ext = filename.rsplit(".", maxsplit=1)
-        return os.path.join(folder, name), f".{ext}"
-    return path, ""
+class SampleReader:
+    def __init__(self, input_folder):
+        self.input_folder = input_folder
+
+    def write(self, output_folder, filters):
+        for root, dirs, files in os.walk(self.input_folder):
+            output_dir = get_matching_path(self.input_folder, output_folder, root)
+
+            for d in dirs:
+                if not all(map(lambda x: x.allow_label(d), filters)):
+                    continue
+                os.makedirs(os.path.join(output_dir, d))
+            for f in files:
+                fla, asset = extract_ids(f)
+                if not all(map(lambda x: x.allow_fla(fla), filters)):
+                    continue
+                if not all(map(lambda x: x.allow_asset(asset), filters)):
+                    continue
+                shutil.copyfile(os.path.join(root, f), os.path.join(output_dir, f))
+
+    def get_labels(self):
+        result = defaultdict(set)
+        for root, dirs, files in os.walk(self.input_folder):
+            for f in files:
+                fla, asset, frame = extract_ids(f)
+                label = os.path.basename(root)
+                result[(fla, asset)].add(label)
+
+        return result

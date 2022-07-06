@@ -6,9 +6,11 @@ import os
 import re
 import traceback
 
+from .filter import AssetFilter
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
 from .samplerenderer import SampleRenderer
+from .util import splitext, get_matching_path
 from .xflsvg import XflReader
 
 
@@ -24,14 +26,14 @@ def should_process(data, args):
     return (as_number(data) - args.id) % args.par == 0
 
 
-def convert(input_path, output_path, args):
+def convert(input_path, output_path, asset_filter, args):
     print("converting", input_path, "->", output_path)
     input_path = os.path.normpath(input_path)
     if input_path.lower().endswith(".xfl"):
         input_folder = os.path.dirname(input_path)
-        reader = XflReader(input_folder)
+        reader = XflReader(input_folder, asset_filter)
     elif os.path.isdir(input_path):
-        reader = RenderTraceReader(input_path)
+        reader = RenderTraceReader(input_path, asset_filter)
     else:
         raise Exception(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/trace/)."
@@ -68,7 +70,7 @@ def convert(input_path, output_path, args):
 
     try:
         timeline = reader.get_timeline(args.timeline)
-        with renderer:
+        with asset_filter.filtered_render_context(reader.id, renderer):
             for frame in list(timeline):
                 frame.render()
 
@@ -150,9 +152,23 @@ def main():
         help="Use the camera box relevant to the scene. This should only be used when rendering a scene, not when rendering a symbol. This only applies to SVG outputs. If not set, use whatever box fits the frame being rendered.",
     )
 
+    parser.add_argument(
+        "--retain",
+        type=str,
+        help="",
+    )
+
+    parser.add_argument(
+        "--discard",
+        type=str,
+        help="",
+    )
+
     args = parser.parse_args()
+
+    filter = AssetFilter(args)
     if not args.batch:
-        convert(args.input, args.output, args)
+        convert(args.input, args.output, filter, args)
         return
 
     input_folder, source_type = splitext(args.input)
@@ -178,12 +194,12 @@ def main():
                 if extension.lower() == ".xfl":
                     input_path = os.path.join(root, fn)
                     output_path = get_matching_path(input_folder, output_folder, root)
-                    convert(input_path, f"{output_path}/{target_type}", args)
+                    convert(input_path, f"{output_path}/{target_type}", filter, args)
             elif source_type == "":
                 if fn.lower() == "frames.json":
                     input_path = root
                     output_path = get_matching_path(input_folder, output_folder, root)
-                    convert(input_path, f"{output_path}/{target_type}", args)
+                    convert(input_path, f"{output_path}/{target_type}", filter, args)
 
 
 if __name__ == "__main__":

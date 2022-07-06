@@ -977,8 +977,9 @@ class Document(Asset):
 
 
 class XflReader:
-    def __init__(self, xflsvg_dir: str):
+    def __init__(self, xflsvg_dir: str, asset_filter=None):
         self.filepath = os.path.normpath(xflsvg_dir)  # deal with trailing /
+        self._asset_filter = asset_filter
         self.id = os.path.basename(self.filepath)  # MUST come after normpath
         self._assets = {}
         self._shapes = {}
@@ -1047,7 +1048,7 @@ class XflReader:
         self._shapes[key] = result
         return result
 
-    def get_scene_containers(self, frame):
+    def get_scenes(self, frame):
         if frame.element_id not in self._assets:
             return None
         yield self.get_timeline().id

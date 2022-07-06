@@ -22,6 +22,7 @@ def color_to_filter(color):
 
 class RenderTracer(XflRenderer):
     def __init__(self):
+        super().__init__()
         self.mask_depth = 0
         self.shapes = {}
         self.context = [[]]
@@ -176,7 +177,7 @@ class RenderTraceReader:
             r = self.get_table_frame(frame_id)
             yield r
 
-    def get_scene_containers(self, frame):
+    def get_scenes(self, frame):
         if not self._reversed_frames:
             self._reversed_frames = defaultdict(set)
             for parent_str, data in self.frames.items():

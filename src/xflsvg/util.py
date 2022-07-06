@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 
 
 @dataclass(frozen=True)
@@ -64,3 +65,16 @@ class ColorObject:
     def id(self):
         """Unique ID used to dedup SVG elements in <defs>."""
         return f"Filter_{hash(self) & 0xFFFFFFFFFFFFFFFF:16x}"
+
+
+def splitext(path):
+    folder, filename = os.path.split(path)
+    if "." in filename:
+        name, ext = filename.rsplit(".", maxsplit=1)
+        return os.path.join(folder, name), f".{ext}"
+    return path, ""
+
+
+def get_matching_path(input_root, output_root, input_path):
+    relpath = os.path.relpath(input_path, input_root)
+    return os.path.join(output_root, relpath)
