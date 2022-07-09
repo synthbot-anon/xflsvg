@@ -1,3 +1,4 @@
+from heapq import merge
 import math
 import os
 
@@ -51,6 +52,21 @@ def color_to_svg_filter(color):
     return filter
 
 
+def merge_bounding_boxes(original, addition):
+    if addition == None:
+        return original
+
+    if original == None:
+        return addition
+
+    return (
+        min(original[0], addition[0]),
+        min(original[1], addition[1]),
+        max(original[2], addition[2]),
+        max(original[3], addition[3]),
+    )
+
+
 class SvgRenderer(XflRenderer):
     HREF = ET.QName("http://www.w3.org/1999/xlink", "href")
 
@@ -66,7 +82,8 @@ class SvgRenderer(XflRenderer):
         self.mask_cache = {}
 
         self._captured_frames = []
-        self.box = None
+        self._frame_boxes = []
+        self.boxes = []
 
         self.force_x = None
         self.force_y = None
@@ -87,7 +104,8 @@ class SvgRenderer(XflRenderer):
                 svg = xfl_domshape_to_svg(domshape, True)
                 self.mask_cache[shape_snapshot.identifier] = svg
 
-        fill_g, stroke_g, extra_defs = svg
+        fill_g, stroke_g, extra_defs, shape_box = svg
+        self.boxes[-1] = merge_bounding_boxes(self.boxes[-1], shape_box)
 
         self.defs.update(extra_defs)
         id = f"Shape{shape_snapshot.identifier}"
@@ -111,6 +129,7 @@ class SvgRenderer(XflRenderer):
 
     def push_transform(self, transformed_snapshot, *args, **kwargs):
         self.context.append([])
+        self.boxes.append(None)
 
     def pop_transform(self, transformed_snapshot, *args, **kwargs):
         transform_data = {}
@@ -120,6 +139,23 @@ class SvgRenderer(XflRenderer):
         ):
             matrix = " ".join([str(x) for x in transformed_snapshot.matrix])
             transform_data["transform"] = f"matrix({matrix})"
+            a, b, c, d, tx, ty = [float(x) for x in transformed_snapshot.matrix]
+            prev_box = self.boxes.pop()
+            if prev_box != None:
+                coordinates = [
+                    prev_box[0]*a + prev_box[1]*b + tx,
+                    prev_box[0]*c + prev_box[1]*d + ty,
+                    prev_box[2]*a + prev_box[3]*b + tx,
+                    prev_box[2]*c + prev_box[3]*d + ty,
+                ]
+
+                self.boxes[-1] = merge_bounding_boxes(self.boxes[-1], [
+                    min(coordinates[0], coordinates[2]),
+                    min(coordinates[1], coordinates[3]),
+                    max(coordinates[0], coordinates[2]),
+                    max(coordinates[1], coordinates[3])
+                ])
+
 
         if self.mask_depth == 0:
             color = transformed_snapshot.color
@@ -135,6 +171,7 @@ class SvgRenderer(XflRenderer):
         else:
             items = self.context.pop()
             self.context[-1].extend(items)
+        
 
     def push_mask(self, masked_snapshot, *args, **kwargs):
         self.mask_depth += 1
@@ -161,10 +198,17 @@ class SvgRenderer(XflRenderer):
         masked_items.extend(children)
 
     def on_frame_rendered(self, frame, *args, **kwargs):
+
         if len(self.context) != 1:
             return
 
         self._captured_frames.append([self.defs, self.context])
+
+        frame_box = None
+        for box in self.boxes:
+            frame_box = merge_bounding_boxes(frame_box, box)
+        self._frame_boxes.append(frame_box)
+        self.boxes = []
         self.defs = {}
         self.context = [
             [],
@@ -172,8 +216,6 @@ class SvgRenderer(XflRenderer):
 
         if self.force_x != None:
             return
-
-        self.box = _expand_box(self.box, frame.box)
 
     def set_camera(self, x, y, width, height):
         self.force_x = x
@@ -185,7 +227,9 @@ class SvgRenderer(XflRenderer):
         self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
     ):
         result = []
-        box = self.box or [0, 0, 0, 0]
+        box = self._frame_boxes[0] or [0, 0, 0, 0]
+        for next_box in self._frame_boxes[1:]:
+            box = merge_bounding_boxes(box, next_box)
 
         x = _conditional(self.force_x, box[0]) - padding / scale
         y = _conditional(self.force_y, box[1]) - padding / scale

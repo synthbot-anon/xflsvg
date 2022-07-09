@@ -86,47 +86,6 @@ def consume_frame_identifier():
     return result
 
 
-def _get_box(domshape):
-    domshape = ET.fromstring(domshape)
-    box = None
-
-    stroke_widths = {}
-    for style in domshape.iterfind(".//{*}StrokeStyle"):
-        stroke_style = style[0]
-        index = style.get("index")
-        width = float(stroke_style.get("weight") or 1)
-        stroke_widths[index] = width
-
-    for edge in domshape.find(".//{*}edges").iterfind(".//{*}Edge[@edges]"):
-        width = 0
-        stroke_index = edge.get("strokeStyle")
-        if stroke_index:
-            width = stroke_widths.get(stroke_index, 0)
-
-        edge_format = edge.get("edges")
-        for point_list in edge_format_to_point_lists(edge_format):
-            for point in point_list:
-                if type(point) == tuple:
-                    point = point[0]
-                x, y = [float(x) for x in point.split()]
-                box = _expand_box(box, [x - width, y - width, x + width, y + width])
-
-    return box
-
-
-def _expand_box(orig, addition):
-    if addition == None:
-        return orig
-    if orig == None:
-        return addition
-
-    orig[0] = min(orig[0], addition[0])
-    orig[1] = min(orig[1], addition[1])
-    orig[2] = max(orig[2], addition[2])
-    orig[3] = max(orig[3], addition[3])
-    return orig
-
-
 class Frame:
     def __init__(
         self, matrix=None, color=None, children=None, element_type=None, element_id=None
@@ -139,51 +98,12 @@ class Frame:
         self.color = color
         self.children = children or []
         self.data = {}
-        self._box = None
         self.element_type = element_type
         self.element_id = element_id
 
     def add_child(self, child_frame):
         self.children.append(child_frame)
         child_frame.parent_frame = self
-
-    @property
-    def box(self):
-        if self._box:
-            return self._box
-
-        if not self.children:
-            return None
-
-        for child in self.children:
-            self._box = _expand_box(self._box, child.box)
-
-        if not self.matrix or not self._box:
-            return self._box
-
-        x1 = (
-            self.matrix[0] * self._box[0]
-            + self.matrix[1] * self._box[1]
-            + self.matrix[4]
-        )
-        x2 = (
-            self.matrix[0] * self._box[2]
-            + self.matrix[1] * self._box[3]
-            + self.matrix[4]
-        )
-        y1 = (
-            self.matrix[2] * self._box[0]
-            + self.matrix[3] * self._box[1]
-            + self.matrix[5]
-        )
-        y2 = (
-            self.matrix[2] * self._box[2]
-            + self.matrix[3] * self._box[3]
-            + self.matrix[5]
-        )
-        self._box = [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
-
-        return self._box
 
     def prepend_child(self, child_frame):
         self.children.insert(0, child_frame)
@@ -204,20 +124,11 @@ class ShapeFrame(Frame):
     def __init__(self, domshape):
         super().__init__()
         self.domshape = domshape
-        self._box = None
 
     def render(self, *args, **kwargs):
         renderer = XflRenderer.current()
         renderer.render_shape(self, *args, **kwargs)
         renderer.on_frame_rendered(self, *args, **kwargs)
-
-    @property
-    def box(self):
-        if self._box:
-            return self._box
-        self._box = _get_box(self.domshape)
-        return self._box
-
 
 def _transformed_frame(original, matrix=None, color=None):
     result = Frame(matrix, color)

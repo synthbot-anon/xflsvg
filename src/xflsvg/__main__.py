@@ -195,6 +195,7 @@ def main():
                     input_path = os.path.join(root, fn)
                     output_path = get_matching_path(input_folder, output_folder, root)
                     convert(input_path, f"{output_path}/{target_type}", filter, args)
+                    break
             elif source_type == "":
                 if fn.lower() == "frames.json":
                     input_path = root
