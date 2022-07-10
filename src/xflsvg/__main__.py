@@ -184,7 +184,7 @@ def main():
         "",
     ), "Output arg must end in either .svg or /"
 
-    for root, dirs, files in os.walk(input_folder):
+    for root, dirs, files in os.walk(input_folder, followlinks=True):
         for fn in files:
             if not should_process(os.path.join(root, fn), args):
                 continue

@@ -93,10 +93,7 @@ def extract_ids(filepath):
     else:
         frame = int(name[frame_start:frame_end])
 
-    modified_path = (
-        f"{name[:frame_start-2]}.sym_f{frame}"  # I messed up some file names
-    )
-    result = extract_fla_name(filepath), extract_symbol_name(modified_path), frame
+    result = extract_fla_name(filepath), extract_symbol_name(filepath), frame
     return result
 
 
