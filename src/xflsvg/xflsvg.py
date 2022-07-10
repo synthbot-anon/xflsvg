@@ -130,6 +130,7 @@ class ShapeFrame(Frame):
         renderer.render_shape(self, *args, **kwargs)
         renderer.on_frame_rendered(self, *args, **kwargs)
 
+
 def _transformed_frame(original, matrix=None, color=None):
     result = Frame(matrix, color)
     result.add_child(original)

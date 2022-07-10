@@ -3,6 +3,7 @@ import math
 import os
 
 from bs4 import BeautifulSoup
+import numpy
 import xml.etree.ElementTree as ET
 
 from .tweens import get_color_map
@@ -67,6 +68,18 @@ def merge_bounding_boxes(original, addition):
     )
 
 
+def expand_bounding_box(original, pt):
+    if original == None:
+        return (*pt, *pt)
+
+    return (
+        min(original[0], pt[0]),
+        min(original[1], pt[1]),
+        max(original[2], pt[0]),
+        max(original[3], pt[1]),
+    )
+
+
 class SvgRenderer(XflRenderer):
     HREF = ET.QName("http://www.w3.org/1999/xlink", "href")
 
@@ -82,8 +95,8 @@ class SvgRenderer(XflRenderer):
         self.mask_cache = {}
 
         self._captured_frames = []
-        self._frame_boxes = []
-        self.boxes = []
+        self.bounding_points = [[]]
+        self.box = None
 
         self.force_x = None
         self.force_y = None
@@ -105,7 +118,14 @@ class SvgRenderer(XflRenderer):
                 self.mask_cache[shape_snapshot.identifier] = svg
 
         fill_g, stroke_g, extra_defs, shape_box = svg
-        self.boxes[-1] = merge_bounding_boxes(self.boxes[-1], shape_box)
+        self.bounding_points[-1].extend(
+            [
+                (shape_box[0], shape_box[1]),
+                (shape_box[0], shape_box[3]),
+                (shape_box[2], shape_box[1]),
+                (shape_box[2], shape_box[3]),
+            ]
+        )
 
         self.defs.update(extra_defs)
         id = f"Shape{shape_snapshot.identifier}"
@@ -129,33 +149,26 @@ class SvgRenderer(XflRenderer):
 
     def push_transform(self, transformed_snapshot, *args, **kwargs):
         self.context.append([])
-        self.boxes.append(None)
+        self.bounding_points.append([])
 
     def pop_transform(self, transformed_snapshot, *args, **kwargs):
         transform_data = {}
+        prev_bounds = self.bounding_points.pop()
+        new_bounds = prev_bounds
         if (
             transformed_snapshot.matrix
             and transformed_snapshot.matrix != _IDENTITY_MATRIX
         ):
             matrix = " ".join([str(x) for x in transformed_snapshot.matrix])
             transform_data["transform"] = f"matrix({matrix})"
-            a, b, c, d, tx, ty = [float(x) for x in transformed_snapshot.matrix]
-            prev_box = self.boxes.pop()
-            if prev_box != None:
-                coordinates = [
-                    prev_box[0]*a + prev_box[1]*b + tx,
-                    prev_box[0]*c + prev_box[1]*d + ty,
-                    prev_box[2]*a + prev_box[3]*b + tx,
-                    prev_box[2]*c + prev_box[3]*d + ty,
-                ]
 
-                self.boxes[-1] = merge_bounding_boxes(self.boxes[-1], [
-                    min(coordinates[0], coordinates[2]),
-                    min(coordinates[1], coordinates[3]),
-                    max(coordinates[0], coordinates[2]),
-                    max(coordinates[1], coordinates[3])
-                ])
+            if prev_bounds:
+                a, b, c, d, tx, ty = [float(x) for x in transformed_snapshot.matrix]
+                prev_bounds = numpy.array(prev_bounds)
+                mat = numpy.array([[a, b], [c, d]])
+                new_bounds = prev_bounds @ mat + [tx, ty]
 
+        self.bounding_points[-1].extend(new_bounds)
 
         if self.mask_depth == 0:
             color = transformed_snapshot.color
@@ -171,7 +184,6 @@ class SvgRenderer(XflRenderer):
         else:
             items = self.context.pop()
             self.context[-1].extend(items)
-        
 
     def push_mask(self, masked_snapshot, *args, **kwargs):
         self.mask_depth += 1
@@ -198,17 +210,15 @@ class SvgRenderer(XflRenderer):
         masked_items.extend(children)
 
     def on_frame_rendered(self, frame, *args, **kwargs):
-
         if len(self.context) != 1:
             return
 
         self._captured_frames.append([self.defs, self.context])
 
-        frame_box = None
-        for box in self.boxes:
-            frame_box = merge_bounding_boxes(frame_box, box)
-        self._frame_boxes.append(frame_box)
-        self.boxes = []
+        for points in self.bounding_points:
+            for point in points:
+                self.box = expand_bounding_box(self.box, point)
+        self.bounding_points = [[]]
         self.defs = {}
         self.context = [
             [],
@@ -227,10 +237,7 @@ class SvgRenderer(XflRenderer):
         self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
     ):
         result = []
-        box = self._frame_boxes[0] or [0, 0, 0, 0]
-        for next_box in self._frame_boxes[1:]:
-            box = merge_bounding_boxes(box, next_box)
-
+        box = self.box or [0, 0, 0, 0]
         x = _conditional(self.force_x, box[0]) - padding / scale
         y = _conditional(self.force_y, box[1]) - padding / scale
         width = _conditional(self.force_width, box[2] - box[0]) + 2 * padding / scale
@@ -266,6 +273,7 @@ class SvgRenderer(XflRenderer):
             result.append(image)
 
         self._captured_frames = []
+        self.bounding_points = [[]]
         self.box = None
 
         return result
