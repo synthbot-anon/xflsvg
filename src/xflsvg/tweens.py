@@ -247,7 +247,7 @@ def _get_edges_by_startpoint(shape):
         if not edge_list:
             continue
         point_lists = edge_format_to_point_lists(edge_list)
-        for pl in point_lists:
+        for pl, bbox in point_lists:
             for pt in pl:
                 if type(pt) in (list, tuple):
                     continue
