@@ -298,14 +298,9 @@ class DOMSymbolInstance(Element):
         self.target_asset = xflsvg.get_safe_asset(xmlnode.get("libraryItemName"))
 
         if self.target_asset:
-            self.first_frame = (
-                int(xmlnode.get("firstFrame", default=0))
-                % self.target_asset.frame_count
-            )
-            self.last_frame = (
-                int(xmlnode.get("lastFrame", default=-1))
-                % self.target_asset.frame_count
-            )
+            self.first_frame = int(xmlnode.get("firstFrame", default=0))
+            # lastFrame doesn't seem to ever get used... maybe it's for the reverse loops?
+            self.last_frame = int(xmlnode.get("lastFrame", default=self.target_asset.frame_count-1))
             self.duration = duration
         else:
             warnings.warn(f'missing asset: {xmlnode.get("libraryItemName")}')
@@ -318,13 +313,17 @@ class DOMSymbolInstance(Element):
             return Frame()
 
         if self.loop_type in ("single frame", None):
+            if self.first_frame >= self.target_asset.frame_count:
+                return Frame()
             frame_index = self.first_frame
         elif self.loop_type == "play once":
-            frame_index = min(self.first_frame + iteration, self.last_frame)
+            # ignore lastFrame
+            frame_index = min(self.first_frame + iteration, self.target_asset.frame_count-1)
         elif self.loop_type == "loop":
+            # ignore lastFrame
             loop_size = (
                 self.target_asset.frame_count
-            )  # should this take last_frame into account?
+            )
             frame_index = (self.first_frame + iteration) % loop_size
         else:
             raise Exception(f"Unknown loop type: {self.loop_type}")
