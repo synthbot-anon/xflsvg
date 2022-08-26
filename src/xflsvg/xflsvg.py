@@ -300,7 +300,9 @@ class DOMSymbolInstance(Element):
         if self.target_asset:
             self.first_frame = int(xmlnode.get("firstFrame", default=0))
             # lastFrame doesn't seem to ever get used... maybe it's for the reverse loops?
-            self.last_frame = int(xmlnode.get("lastFrame", default=self.target_asset.frame_count-1))
+            self.last_frame = int(
+                xmlnode.get("lastFrame", default=self.target_asset.frame_count - 1)
+            )
             self.duration = duration
         else:
             warnings.warn(f'missing asset: {xmlnode.get("libraryItemName")}')
@@ -318,12 +320,12 @@ class DOMSymbolInstance(Element):
             frame_index = self.first_frame
         elif self.loop_type == "play once":
             # ignore lastFrame
-            frame_index = min(self.first_frame + iteration, self.target_asset.frame_count-1)
+            frame_index = min(
+                self.first_frame + iteration, self.target_asset.frame_count - 1
+            )
         elif self.loop_type == "loop":
             # ignore lastFrame
-            loop_size = (
-                self.target_asset.frame_count
-            )
+            loop_size = self.target_asset.frame_count
             frame_index = (self.first_frame + iteration) % loop_size
         else:
             raise Exception(f"Unknown loop type: {self.loop_type}")

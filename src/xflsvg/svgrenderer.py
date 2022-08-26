@@ -233,15 +233,25 @@ class SvgRenderer(XflRenderer):
         self.force_width = width
         self.force_height = height
 
-    def compile(
-        self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
-    ):
-        result = []
+    def get_svg_box(self, scale, padding):
         box = self.box or [0, 0, 0, 0]
         x = _conditional(self.force_x, box[0]) - padding / scale
         y = _conditional(self.force_y, box[1]) - padding / scale
         width = _conditional(self.force_width, box[2] - box[0]) + 2 * padding / scale
         height = _conditional(self.force_height, box[3] - box[1]) + 2 * padding / scale
+        return x, y, width, height
+
+    def get_frame_dimensions(self, **kwargs):
+        scale = kwargs.get("scale", 1)
+        padding = kwargs.get("padding", 0)
+        x, y, width, height = self.get_svg_box(scale, padding)
+        return width * scale, height * scale
+
+    def compile(
+        self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
+    ):
+        result = []
+        x, y, width, height = self.get_svg_box(scale, padding)
 
         for i, data in enumerate(self._captured_frames):
             defs, context = data

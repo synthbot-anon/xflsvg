@@ -55,8 +55,10 @@ SOFTWARE.
             'bs4',
             'lxml',
             'numpy',
+            'Wand',
             'xfl2svg @ git+https://github.com/synthbot-anon/PluieElectrique-xfl2svg.git',
-            'kdtree @ git+https://github.com/synthbot-anon/Vectorized-Python-KD-Tree.git'
+            'kdtree @ git+https://github.com/synthbot-anon/Vectorized-Python-KD-Tree.git',
+            'gifski @ git+https://github.com/synthbot-anon/ImageOptim-gifski.git'
     ],
     include_package_data=True,
 

@@ -7,6 +7,8 @@ import re
 import traceback
 
 from .filter import AssetFilter
+from .gifrenderer import GifRenderer
+from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
 from .samplerenderer import SampleRenderer
@@ -27,21 +29,27 @@ def should_process(data, args):
 
 
 def convert(input_path, output_path, asset_filter, args):
-    print("converting", input_path, "->", output_path)
     input_path = os.path.normpath(input_path)
     if input_path.lower().endswith(".xfl"):
         input_folder = os.path.dirname(input_path)
         reader = XflReader(input_folder, asset_filter)
-    elif os.path.isdir(input_path):
-        reader = RenderTraceReader(input_path, asset_filter)
+    elif input_path.lower().endswith(".trace"):
+        input_folder = os.path.dirname(input_path)
+        reader = RenderTraceReader(input_folder, asset_filter)
     else:
         raise Exception(
-            "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/trace/)."
+            "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
 
     output_path = os.path.normpath(output_path)
     if output_path.lower().endswith(".svg"):
         renderer = SvgRenderer()
+        output_folder = os.path.dirname(output_path)
+    elif output_path.lower().endswith(".png"):
+        renderer = PngRenderer()
+        output_folder = os.path.dirname(output_path)
+    elif output_path.lower().endswith(".gif"):
+        renderer = GifRenderer()
         output_folder = os.path.dirname(output_path)
     elif output_path.lower().endswith(".samples"):
         renderer = SampleRenderer()
@@ -52,7 +60,7 @@ def convert(input_path, output_path, asset_filter, args):
         output_folder = output_path
     else:
         raise Exception(
-            "The output needs to be either an svg path (/path/to/file.svg) or a render trace (/path/to/folder)."
+            "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
         )
 
     if output_folder:
@@ -177,11 +185,16 @@ def main():
     source_type = source_type.lower()
     target_type = target_type.lower()
 
-    assert source_type in (".xfl", ""), "Input arg must end in either .xfl or /"
+    assert source_type in (
+        ".xfl",
+        ".trace",
+    ), "Input arg must end in either .xfl or .trace"
     assert target_type in (
         ".svg",
+        ".png",
+        ".gif",
         ".samples",
-        "",
+        ".trace",
     ), "Output arg must end in either .svg or /"
 
     for root, dirs, files in os.walk(input_folder, followlinks=True):
@@ -196,7 +209,7 @@ def main():
                     output_path = get_matching_path(input_folder, output_folder, root)
                     convert(input_path, f"{output_path}/{target_type}", filter, args)
                     break
-            elif source_type == "":
+            elif source_type == ".trace":
                 if fn.lower() == "frames.json":
                     input_path = root
                     output_path = get_matching_path(input_folder, output_folder, root)
