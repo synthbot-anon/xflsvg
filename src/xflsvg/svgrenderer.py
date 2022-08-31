@@ -97,6 +97,7 @@ class SvgRenderer(XflRenderer):
         self._captured_frames = []
         self.bounding_points = [[]]
         self.box = None
+        self.shape_counts = [0]
 
         self.force_x = None
         self.force_y = None
@@ -120,6 +121,8 @@ class SvgRenderer(XflRenderer):
                     (shape_box[2], shape_box[3]),
                 ]
             )
+
+            self.shape_counts[-1] += 1
         else:
             svg = self.mask_cache.get(shape_snapshot.identifier, None)
             if not svg:
@@ -225,6 +228,7 @@ class SvgRenderer(XflRenderer):
         self.context = [
             [],
         ]
+        self.shape_counts.append(0)
 
         if self.force_x != None:
             return
@@ -250,12 +254,26 @@ class SvgRenderer(XflRenderer):
         return width * scale, height * scale
 
     def compile(
-        self, output_filename=None, scale=1, padding=0, suffix=True, *args, **kwargs
+        self,
+        output_filename=None,
+        scale=1,
+        padding=0,
+        suffix=True,
+        skip_leading_blanks=False,
+        *args,
+        **kwargs,
     ):
         result = []
         x, y, width, height = self.get_svg_box(scale, padding)
+        found_nonempty_frame = False
 
         for i, data in enumerate(self._captured_frames):
+            if self.shape_counts[i] != 0:
+                found_nonempty_frame = True
+
+            if skip_leading_blanks and not found_nonempty_frame:
+                continue
+
             defs, context = data
             svg = ET.Element(
                 "svg",

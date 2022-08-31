@@ -17,7 +17,7 @@ from .xflsvg import XflReader
 
 
 # known buggy files: MLP509_414 (tween), MLP422_593 and MLP509_056 (shape), MLP509_275 (stroke id)
-# ... MLP214_079 (missing shapes)
+# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof)
 # known missing stuff: LinearGradient for strokes
 
 
@@ -88,7 +88,11 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
                 frame.render()
 
         renderer.compile(
-            output_path, reader=reader, padding=args.padding, scale=args.scale
+            output_path,
+            reader=reader,
+            padding=args.padding,
+            scale=args.scale,
+            skip_leading_blanks=args.skip_leading_blanks,
         )
     except:
         print(f"error - check {output_folder}/logs.txt for details.")
@@ -181,6 +185,11 @@ def main():
     )
     parser.add_argument(
         "--no-stills",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--skip-leading-blanks",
         action="store_true",
         default=False,
     )

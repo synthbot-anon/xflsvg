@@ -5,6 +5,7 @@ from typing import Set, Tuple
 
 from .util import splitext, get_matching_path
 from .samplerenderer import SampleReader, create_filename
+from .xflsvg import Frame
 
 
 class AssetFilter:
@@ -90,7 +91,9 @@ class AssetFilter:
             else:
                 for focus_item in self.focus_list_by_fla[filename]:
                     for relpath in self._output_paths_by_fla[filename][focus_item]:
-                        yield None, f"{output_path}/{relpath}", lambda x: x == focus_item
+                        dirname = os.path.dirname(relpath)
+                        new_fn = create_filename(filename, focus_item, None, None)
+                        yield None, f"{output_path}/{dirname}/{new_fn}", focus_item
             return
 
         if filename not in self._allowed_tasks_by_path:
@@ -165,7 +168,7 @@ class AssetFilter:
             if frame.element_type != "asset":
                 return
 
-            if self._file_context[-1][1](frame.element_id):
+            if self._file_context[-1][1] == frame.element_id:
                 self._in_focus = True
                 self._finish_on_frame = frame
 
@@ -193,7 +196,18 @@ class AssetFilter:
 
     def wrap_pop_transform(self, pop_transform):
         def _modified(frame, *args, **kwargs):
-            pop_transform(frame, *args, **kwargs)
+            if frame == self._switch_on_frame:
+                self._render_allowed = not self._render_allowed
+                self._switch_on_frame = None
+
+            if frame == self._finish_on_frame:
+                self._in_focus = self._default_in_focus
+                self._finish_on_frame = None
+
+            if not self._in_focus:
+                pop_transform(Frame(), *args, **kwargs)
+            else:
+                pop_transform(frame, *args, **kwargs)
 
         return _modified
 
@@ -232,19 +246,11 @@ class AssetFilter:
             if self._in_focus:
                 pop_masked_render(frame, *args, **kwargs)
 
-            return _modified
+        return _modified
 
     def wrap_on_frame_rendered(self, on_frame_rendered):
         def _modified(frame, *args, **kwargs):
             on_frame_rendered(frame, *args, **kwargs)
-
-            if frame == self._switch_on_frame:
-                self._render_allowed = not self._render_allowed
-                self._switch_on_frame = None
-
-            if frame == self._finish_on_frame:
-                self._in_focus = self._default_in_focus
-                self._finish_on_frame = None
 
         return _modified
 
@@ -265,8 +271,12 @@ class AssetFilter:
         renderer.render_shape = self.wrap_render_shape(renderer.render_shape)
         renderer.push_mask = self.wrap_push_mask(renderer.push_mask)
         renderer.pop_mask = self.wrap_pop_mask(renderer.pop_mask)
-        renderer.push_masked_render = self.wrap_push_mask(renderer.push_masked_render)
-        renderer.pop_masked_render = self.wrap_pop_mask(renderer.pop_masked_render)
+        renderer.push_masked_render = self.wrap_push_masked_render(
+            renderer.push_masked_render
+        )
+        renderer.pop_masked_render = self.wrap_pop_masked_render(
+            renderer.pop_masked_render
+        )
         renderer.on_frame_rendered = self.wrap_on_frame_rendered(
             renderer.on_frame_rendered
         )
