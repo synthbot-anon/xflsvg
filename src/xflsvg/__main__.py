@@ -17,7 +17,8 @@ from .xflsvg import XflReader
 
 
 # known buggy files: MLP509_414 (tween), MLP422_593 and MLP509_056 (shape), MLP509_275 (stroke id)
-# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof)
+# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof), MLP422_027 (when focusing on Twilight,
+# ... there's one behind the background)
 # known missing stuff: LinearGradient for strokes
 
 
@@ -27,7 +28,7 @@ def as_number(data):
 
 
 def should_process(data, args):
-    return (as_number(data) - args.id) % args.par == 0
+    return as_number(data) % args.par == args.id
 
 
 def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
