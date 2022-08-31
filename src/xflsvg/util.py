@@ -68,6 +68,7 @@ class ColorObject:
 
 
 def splitext(path):
+    # This handles /.ext in a way that works better for xflsvg file specs than os.path.splitext.
     folder, filename = os.path.split(path)
     if "." in filename:
         name, ext = filename.rsplit(".", maxsplit=1)

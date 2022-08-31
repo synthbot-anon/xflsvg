@@ -110,6 +110,16 @@ class SvgRenderer(XflRenderer):
                 domshape = ET.fromstring(shape_snapshot.domshape)
                 svg = xfl_domshape_to_svg(domshape, False)
                 self.shape_cache[shape_snapshot.identifier] = svg
+
+            fill_g, stroke_g, extra_defs, shape_box = svg
+            self.bounding_points[-1].extend(
+                [
+                    (shape_box[0], shape_box[1]),
+                    (shape_box[0], shape_box[3]),
+                    (shape_box[2], shape_box[1]),
+                    (shape_box[2], shape_box[3]),
+                ]
+            )
         else:
             svg = self.mask_cache.get(shape_snapshot.identifier, None)
             if not svg:
@@ -117,15 +127,7 @@ class SvgRenderer(XflRenderer):
                 svg = xfl_domshape_to_svg(domshape, True)
                 self.mask_cache[shape_snapshot.identifier] = svg
 
-        fill_g, stroke_g, extra_defs, shape_box = svg
-        self.bounding_points[-1].extend(
-            [
-                (shape_box[0], shape_box[1]),
-                (shape_box[0], shape_box[3]),
-                (shape_box[2], shape_box[1]),
-                (shape_box[2], shape_box[3]),
-            ]
-        )
+            fill_g, stroke_g, extra_defs, shape_box = svg
 
         self.defs.update(extra_defs)
         id = f"Shape{shape_snapshot.identifier}"

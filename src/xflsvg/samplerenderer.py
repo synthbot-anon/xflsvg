@@ -64,7 +64,7 @@ def hash(data):
 
 
 def create_filename(fla_id, symbol_id, shape, frame):
-    safe_fla = fla_id and f"f-{id_to_filename(fla_id)}"
+    safe_fla = fla_id and f"f-{id_to_filename(fla_id)}.xfl"
     safe_sym = symbol_id and f"s-{id_to_filename(symbol_id)}.sym"
     safe_shape = shape and f"d-{shape}.shape"
     safe_frame = (frame != None) and f'f{"%04d" % frame}'
@@ -106,12 +106,14 @@ def extract_shape_name(full_path):
 
 def extract_ids(filepath):
     name = splitext(filepath)[0]
-    frame_start = name.rfind("_f") + 2
+    frame_start = name.rfind("_f")
     frame_end = name.find(".", frame_start)
-    if not name[frame_start:frame_end]:
+    if frame_start == -1 or frame_end == -1:
         frame = 0
     else:
+        print("got frame from", filepath, frame_start, frame_end)
         frame = int(name[frame_start:frame_end])
+        print("frame:", frame)
     return (
         extract_fla_name(filepath),
         extract_symbol_name(filepath),
@@ -131,7 +133,6 @@ class SampleRenderer(XflRenderer):
 
     def render_shape(self, svg_frame, *args, **kwargs):
         domshape = etree.XML(svg_frame.domshape, parser=_xml_parser)
-        print(etree.tostring(domshape))
         id = hash(etree.tostring(domshape))
         self._shape_frames[id] = svg_frame
 
@@ -193,10 +194,24 @@ class SampleReader:
 
     def get_labels(self):
         result = defaultdict(set)
+        orig_paths = {}
         for root, dirs, files in os.walk(self.input_folder):
-            for f in files:
-                fla, asset, shape, frame = extract_ids(f)
-                label = os.path.basename(root)
-                result[(fla, asset)].add(label)
+            if not files:
+                continue
 
-        return result
+            relpath = os.path.relpath(root, self.input_folder)
+            labels = set(relpath.split(os.sep))
+
+            for f in files:
+                try:
+                    fla, asset, shape, frame = extract_ids(f)
+                    label = os.path.basename(root)
+                    result[(fla, asset)].update(labels)
+                    asset_path = os.path.splitext(os.path.join(relpath, f))[0]
+                    orig_paths.setdefault(fla, {}).setdefault(asset, set()).add(
+                        asset_path
+                    )
+                except:
+                    print("failed to parse filename label from:", f)
+
+        return result, orig_paths
