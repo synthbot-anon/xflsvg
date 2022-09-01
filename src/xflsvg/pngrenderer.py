@@ -21,7 +21,7 @@ class PngRenderer(SvgRenderer):
         for i, xml in enumerate(xml_frames):
             print("compiling frame", i, "to png", end="... ", flush=True)
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            png = Image(blob=svg).make_blob("png", background=self.background)
+            png = Image(blob=svg, background=self.background).make_blob("png")
             print("done")
             result.append(png)
 
