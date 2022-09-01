@@ -20,13 +20,17 @@ class GifRenderer(SvgRenderer):
 
         g = None
         timestamp = 0
+        width = None
+        height = None
 
         for xml in xml_frames:
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            image = Image(blob=svg, background=self.background)
+            image = Image(blob=svg, background=self.background, width=width, height=height)
 
             if g == None:
-                g = Gifski(image.width, image.height)
+                width = image.width
+                height = image.height
+                g = Gifski(width, height)
                 g.set_file_output(output_filename)
 
             rgba = image.make_blob("RGBA")
