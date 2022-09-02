@@ -14,15 +14,11 @@ class PngRenderer(SvgRenderer):
 
     def compile(self, output_filename=None, suffix=True, *args, **kwargs):
         result = []
-        print("compiling to svg", end="... ", flush=True)
         xml_frames = super().compile(*args, **kwargs)
-        print("done")
 
         for i, xml in enumerate(xml_frames):
-            print("compiling frame", i, "to png", end="... ", flush=True)
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            png = Image(blob=svg, format='msvg', background=self.background).make_blob("png")
-            print("done")
+            png = Image(blob=svg, background=self.background).make_blob("png")
             result.append(png)
 
             if output_filename:

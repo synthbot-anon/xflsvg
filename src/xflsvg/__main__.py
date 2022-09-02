@@ -96,7 +96,7 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
             skip_leading_blanks=args.skip_leading_blanks,
         )
     except:
-        print(f"error - check {output_folder}/logs.txt for details.")
+        print(f"error processing", input_path, "- check {output_folder}/logs.txt for details.")
         logging.exception(traceback.format_exc())
 
 
@@ -222,7 +222,7 @@ def main():
             input_folder, output, False
         ):
             print(
-                "got task:", f"{input}", f"{output_path}{target_type}", timeline, filter
+                "processing:", f"{input}", f"{output_path}{target_type}", timeline
             )
             convert(
                 input, f"{output_path}{target_type}", timeline, filter, focus_fn, args
@@ -253,7 +253,7 @@ def main():
                     # TODO: copy the result over
                     pass
 
-                print(input_path, f"{output_path}{target_type}", timeline, filter)
+                print('processing:', input_path, f"{output_path}{target_type}", timeline)
                 convert(
                     input_path,
                     f"{output_path}{target_type}",
