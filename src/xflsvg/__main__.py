@@ -1,4 +1,5 @@
 import argparse
+from glob import glob
 import hashlib
 import json
 import logging
@@ -29,6 +30,34 @@ def as_number(data):
 
 def should_process(data, args):
     return as_number(data) % args.par == args.id
+
+
+def output_completed(output_path):
+    if os.path.exists(f"{output_path}.lock"):
+        return False
+
+    if os.path.exists(output_path):
+        return True
+
+    base, ext = os.path.splitext(output_path)
+    start = len(base)
+    end = -len(ext)
+    for candidate in glob(f"{base}*{ext}"):
+        try:
+            int(candidate[start:end])
+            return True
+        except:
+            pass
+
+    return False
+
+
+def lock_output(output_path):
+    open(f"{output_path}.lock", "w").close()
+
+
+def unlock_output(output_path):
+    os.remove(f"{output_path}.lock")
 
 
 def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
@@ -66,8 +95,13 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
         )
 
+    if output_completed(output_path):
+        print("already completed:", output_path)
+        return
+
     if output_folder:
         os.makedirs(output_folder, exist_ok=True)
+    lock_output(output_path)
 
     logging.basicConfig(
         filename=os.path.join(output_folder, "logs.txt"),
@@ -95,9 +129,19 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
             scale=args.scale,
             skip_leading_blanks=args.skip_leading_blanks,
         )
+
+        unlock_output(output_path)
+
+    except KeyboardInterrupt:
+        raise
     except:
-        print(f"error processing", input_path, "- check {output_folder}/logs.txt for details.")
+        print(
+            f"error processing",
+            input_path,
+            f"- check {output_folder}/logs.txt for details.",
+        )
         logging.exception(traceback.format_exc())
+        unlock_output(output_path)
 
 
 def get_matching_path(input_root, output_root, input_path):
@@ -141,7 +185,7 @@ def main():
         "--id",
         type=int,
         required=False,
-        default=1,
+        default=0,
         help="The sibling index of this process (0 through par-1). This is for parallel execution with xargs.",
     )
     parser.add_argument(
@@ -221,9 +265,7 @@ def main():
         for timeline, output_path, focus_fn in filter.get_tasks(
             input_folder, output, False
         ):
-            print(
-                "processing:", f"{input}", f"{output_path}{target_type}", timeline
-            )
+            print("processing:", f"{input}", f"{output_path}{target_type}", timeline)
             convert(
                 input, f"{output_path}{target_type}", timeline, filter, focus_fn, args
             )
@@ -253,7 +295,9 @@ def main():
                     # TODO: copy the result over
                     pass
 
-                print('processing:', input_path, f"{output_path}{target_type}", timeline)
+                print(
+                    "processing:", input_path, f"{output_path}{target_type}", timeline
+                )
                 convert(
                     input_path,
                     f"{output_path}{target_type}",

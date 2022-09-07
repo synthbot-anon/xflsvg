@@ -25,7 +25,9 @@ class GifRenderer(SvgRenderer):
 
         for xml in xml_frames:
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            image = Image(blob=svg, background=self.background, width=width, height=height)
+            image = Image(
+                blob=svg, background=self.background, width=width, height=height
+            )
 
             if g == None:
                 width = image.width
