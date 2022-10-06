@@ -173,11 +173,15 @@ class SampleRenderer(XflRenderer):
 
 
 class SampleReader:
+    _labels_by_asset = {}
+    _assets_by_label = {}
+    _asset_paths_by_fla = {}
+
     def __init__(self, input_folder):
         self.input_folder = input_folder
 
     @classmethod
-    def load_assets(cls, input_path):
+    def load_samples(cls, input_path):
         if input_path in cls._labels_by_asset:
             return (
                 cls._labels_by_asset[input_path],

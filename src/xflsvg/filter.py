@@ -10,7 +10,7 @@ from .xflsvg import Frame
 
 class AssetFilter:
     def __init__(self, args):
-        self.check_fn = None
+        self.allow_asset_fn = None
 
         self._allowed_tasks_by_path = None
         self._output_paths_by_fla = {}
@@ -23,16 +23,16 @@ class AssetFilter:
         ), "You can't specify both --retain and --discard."
         if args.discard:
             discard_list, asset_paths_by_fla = self.get_filtered_list(args.discard)
-            self.check_fn = lambda x: x not in discard_list
+            self.allow_asset_fn = lambda x: x not in discard_list
             self._default_render = True
             self._render_allowed = True
         elif args.retain:
             retain_list, asset_paths_by_fla = self.get_filtered_list(args.retain)
-            self.check_fn = lambda x: x in retain_list
+            self.allow_asset_fn = lambda x: x in retain_list
             self._default_render = False
             self._render_allowed = False
         else:
-            self.check_fn = lambda x: True
+            self.allow_asset_fn = lambda x: True
             self._render_allowed = True
             self._default_render = True
 
@@ -60,25 +60,18 @@ class AssetFilter:
             self._finished = False
 
     @classmethod
-    def get_filtered_list(cls, filter_spec) -> Set[Tuple[str, str]]:
-        input_path = filter_spec.split("[", maxsplit=1)[0]
+    def get_filtered_list(cls, input) -> Set[Tuple[str, str]]:
         (
             labels_by_asset,
             assets_by_label,
             asset_paths_by_fla,
-        ) = SampleReader.load_samples(input_path)
+        ) = SampleReader.load_samples(input.pathspec)
 
-        if "[" not in filter_spec:
+        if not input.param:
             return labels_by_asset.keys(), asset_paths_by_fla
 
-        assert filter_spec[-1] == "]"
-
         result = set()
-
-        label_filter_start = filter_spec.index("[")
-        label_filters = [
-            x.strip() for x in filter_spec[label_filter_start:-1].split(",")
-        ]
+        label_filters = [x.strip() for x in input.param.split(",")]
         for label in label_filters:
             result.update(assets_by_label[label])
 
@@ -98,29 +91,27 @@ class AssetFilter:
 
     def get_tasks(self, input_path, output_path):
         basename = os.path.basename(os.path.normpath(input_path))
-        filename, ext = splitext(basename)
-        filename = filename.rstrip("/\\")
 
         if self._allowed_tasks_by_path == None:
             if self.focus_list_by_fla == None:
                 yield None, output_path, None
             else:
-                for focus_item in self.focus_list_by_fla[filename]:
-                    for relpath in self._output_paths_by_fla[filename][focus_item]:
+                for focus_item in self.focus_list_by_fla[basename]:
+                    for relpath in self._output_paths_by_fla[basename][focus_item]:
                         dirname = os.path.dirname(relpath)
-                        new_fn = create_filename(filename, focus_item, None, None)
+                        new_fn = create_filename(basename, focus_item, None, None)
                         yield None, f"{output_path}/{dirname}/{new_fn}", focus_item
         else:
-            if filename not in self._allowed_tasks_by_path:
+            if basename not in self._allowed_tasks_by_path:
                 return
 
-            for asset, relpaths in self._output_paths_by_fla[filename].items():
+            for asset, relpaths in self._output_paths_by_fla[basename].items():
                 for relpath in relpaths:
-                    for focus_fn in self.focus_list_by_fla[filename]:
+                    for focus_fn in self.focus_list_by_fla[basename]:
                         yield asset, os.path.join(output_path, relpath), focus_fn
 
     def allow_asset(self, fla, asset):
-        return self.check_fn((fla, asset))
+        return self.allow_asset_fn((fla, asset))
 
     def wrap_push_transform(self, push_transform):
         def _modified(frame, *args, **kwargs):

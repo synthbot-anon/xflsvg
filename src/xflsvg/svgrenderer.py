@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 from .tweens import get_color_map
 from .xflsvg import XflRenderer
-from xfl2svg.shape.shape import xfl_domshape_to_svg
+from xfl2svg.shape.shape import xfl_domshape_to_svg, dict_shape_to_svg
 
 
 _EMPTY_SVG = '<svg height="1px" width="1px" viewBox="0 0 1 1" />'
@@ -80,6 +80,16 @@ def expand_bounding_box(original, pt):
     )
 
 
+def shape_frame_to_svg(shape_frame, mask):
+    if shape_frame.ext == ".domshape":
+        domshape = ET.fromstring(shape_frame.shape_data)
+        return xfl_domshape_to_svg(domshape, mask)
+    elif shape_frame.ext == ".trace":
+        return dict_shape_to_svg(shape_frame.shape_data)
+    else:
+        raise Exception("unknown shape type:", shape_frame.ext)
+
+
 class SvgRenderer(XflRenderer):
     HREF = ET.QName("http://www.w3.org/1999/xlink", "href")
 
@@ -105,14 +115,14 @@ class SvgRenderer(XflRenderer):
         self.force_height = None
 
     def render_shape(self, shape_snapshot, *args, **kwargs):
-        if self.mask_depth == 0:
-            svg = self.shape_cache.get(shape_snapshot.identifier, None)
-            if not svg:
-                domshape = ET.fromstring(shape_snapshot.domshape)
-                svg = xfl_domshape_to_svg(domshape, False)
-                self.shape_cache[shape_snapshot.identifier] = svg
+        svg = self.mask_cache.get(shape_snapshot.identifier, None)
+        if not svg:
+            svg = shape_frame_to_svg(shape_snapshot, self.mask_depth != 0)
+            self.mask_cache[shape_snapshot.identifier] = svg
 
-            fill_g, stroke_g, extra_defs, shape_box = svg
+        fill_g, stroke_g, extra_defs, shape_box = svg
+
+        if self.mask_depth == 0:
             self.bounding_points[-1].extend(
                 [
                     (shape_box[0], shape_box[1]),
@@ -121,16 +131,7 @@ class SvgRenderer(XflRenderer):
                     (shape_box[2], shape_box[3]),
                 ]
             )
-
             self.shape_counts[-1] += 1
-        else:
-            svg = self.mask_cache.get(shape_snapshot.identifier, None)
-            if not svg:
-                domshape = ET.fromstring(shape_snapshot.domshape)
-                svg = xfl_domshape_to_svg(domshape, True)
-                self.mask_cache[shape_snapshot.identifier] = svg
-
-            fill_g, stroke_g, extra_defs, shape_box = svg
 
         self.defs.update(extra_defs)
         id = f"Shape{shape_snapshot.identifier}"

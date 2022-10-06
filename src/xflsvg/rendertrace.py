@@ -2,9 +2,10 @@ from collections import defaultdict
 from contextlib import contextmanager
 import json
 import os
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
-from xfl2svg.shape.shape import json_normalize_xfl_domshape
+from xfl2svg.shape.shape import json_normalize_xfl_domshape, dict_shape_to_svg
 
 from .util import ColorObject
 from .xflsvg import DOMShape, Frame, MaskedFrame, XflRenderer, consume_frame_identifier
@@ -19,6 +20,16 @@ def color_to_filter(color):
         "multiply": [color.mr, color.mg, color.mb, color.ma],
         "shift": [color.dr, color.dg, color.db, color.da],
     }
+
+
+def shape_frame_to_dict(shape_frame, mask):
+    if shape_frame.ext == ".domshape":
+        domshape = ET.fromstring(shape_frame.shape_data)
+        return json_normalize_xfl_domshape(domshape, mask)
+    elif shape_frame.ext == ".trace":
+        return shape_frame.shape_data
+    else:
+        raise Exception("unknown shape type:", shape_frame.ext)
 
 
 class RenderTracer(XflRenderer):
@@ -55,11 +66,9 @@ class RenderTracer(XflRenderer):
 
     def render_shape(self, shape_snapshot, *args, **kwargs):
         if shape_snapshot.identifier not in self.shapes:
-            shape = json_normalize_xfl_domshape(
-                ET.fromstring(shape_snapshot.domshape), self.mask_depth > 0
-            )
+            shape = shape_frame_to_dict(shape_snapshot, self.mask_depth > 0)
             self.shapes[shape_snapshot.identifier] = shape
-        # self.labels
+
         self.context[-1].append(shape_snapshot.identifier)
 
     def push_transform(self, transformed_snapshot, *args, **kwargs):
@@ -130,24 +139,19 @@ class RenderTraceReader:
         with open(os.path.join(input_folder, "labels.json"), "r") as inp:
             self.labels = json.load(inp)
         self.frame_cache = {}
-        self._box = None
         self._reversed_frames = None
 
-    def get_camera(self):
-        if self._box:
-            return self._box
-
         for frame_id, label in self.labels.items():
-            if "timeline" not in label:
-                continue
+            print("checking", label)
+            if "timeline" in label:
+                if label["timeline"].lower().startswith("document://"):
+                    self.camera = [0, 0, label["width"], label["height"]]
+                    self.id = urlparse(label["source"]).netloc
+                    print("id:", self.id)
+                    break
 
-            if not label["timeline"].lower().startswith("file://"):
-                continue
-
-            break
-
-        self._box = [0, 0, label["width"], label["height"]]
-        return self._box
+    def get_camera(self):
+        return self.camera
 
     def get_timeline(self, id=None):
         available_scenes = set()
@@ -161,7 +165,7 @@ class RenderTraceReader:
                     result.append((frame_id, label["frame"]))
                 continue
 
-            if not label["timeline"].lower().startswith("file://"):
+            if not label["timeline"].lower().startswith("document://"):
                 continue
             available_scenes.add(label["timeline"])
             result.append((frame_id, label["frame"]))
@@ -205,8 +209,8 @@ class RenderTraceReader:
         render_index_str = str(render_index)
 
         if render_index_str in self.shapes:
-            domshape = self.shapes[render_index_str]
-            shape = ShapeFrame(domshape)
+            shape = self.shapes[render_index_str]
+            shape = ShapeFrame(shape, ".trace")
             shape.identifier = render_index
             self.frame_cache[render_index] = shape
             return shape

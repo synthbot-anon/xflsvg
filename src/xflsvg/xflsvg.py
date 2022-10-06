@@ -121,9 +121,10 @@ class Frame:
 
 
 class ShapeFrame(Frame):
-    def __init__(self, domshape):
+    def __init__(self, shape_data, ext):
         super().__init__()
-        self.domshape = domshape
+        self.shape_data = shape_data
+        self.ext = ext
 
     def render(self, *args, **kwargs):
         renderer = XflRenderer.current()
@@ -799,6 +800,7 @@ class Asset(AnimationObject):
         super().__init__()
         self.xflsvg = xflsvg
         self.id = id
+        self.source = self.xflsvg.id
         self.layers = []
         self._frames = {}
         self.frame_count = 0
@@ -825,6 +827,7 @@ class Asset(AnimationObject):
 
         new_frame = Frame(element_type=element_type, element_id=self.id)
         new_frame.data["timeline"] = self.id
+        new_frame.data["source"] = self.xflsvg.id
         new_frame.data["frame"] = frame_index
         if self.width:
             new_frame.data["width"] = self.width
@@ -881,7 +884,7 @@ class Document(Asset):
 
         super().__init__(
             xflsvg,
-            f"file:///{xflsvg.id}.xfl/{timeline_name}",
+            f"document://{xflsvg.id}/{timeline_name}",
             xmlnode,
             timeline=dom_timeline,
             width=self.width,
@@ -890,10 +893,9 @@ class Document(Asset):
 
 
 class XflReader:
-    def __init__(self, xflsvg_dir: str, asset_filter=None):
+    def __init__(self, xflsvg_dir: str):
         self.filepath = os.path.normpath(xflsvg_dir)  # deal with trailing /
-        self._asset_filter = asset_filter
-        self.id = os.path.basename(self.filepath)  # MUST come after normpath
+        self.id = f"{os.path.basename(self.filepath)}.xfl"  # MUST come after normpath
         self._assets = {}
         self._shapes = {}
 
@@ -957,7 +959,7 @@ class XflReader:
         if key in self._shapes:
             return self._shapes[key]
 
-        result = ShapeFrame(str(xmlnode))
+        result = ShapeFrame(str(xmlnode), ".domshape")
         self._shapes[key] = result
         return result
 

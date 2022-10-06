@@ -82,10 +82,9 @@ def convert(
             input_folder = input_path
         else:
             input_folder = os.path.dirname(input_path)
-        reader = XflReader(input_folder, asset_filter)
+        reader = XflReader(input_folder)
     elif input_type == ".trace":
-        input_folder = os.path.dirname(input_path)
-        reader = RenderTraceReader(input_folder, asset_filter)
+        reader = RenderTraceReader(input_path)
     else:
         raise Exception(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
@@ -106,10 +105,9 @@ def convert(
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
-        output_path = f"{output_path}/{output_type}"
+        output_path = f"{output_path}/"
     elif output_type == ".trace":
         renderer = RenderTracer()
-        output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
     else:
         raise Exception(
@@ -177,10 +175,6 @@ class InputFileSpec:
     is_folder: bool
     relpath: str
 
-    _labels_by_asset = {}
-    _assets_by_label = {}
-    _asset_paths_by_fla = {}
-
     @classmethod
     def from_spec(cls, spec, root=None):
         if "[" in spec:
@@ -193,6 +187,8 @@ class InputFileSpec:
             param = None
 
         path, ext = splitext(spec)
+        if os.path.exists(spec):
+            path = spec
 
         is_folder = (not os.path.isfile(path)) or (path[-1] in ("/", "\\"))
 
@@ -210,6 +206,10 @@ class InputFileSpec:
     def subspec(self, path):
         relpath = os.path.relpath(path, self.path)
         return InputFileSpec(path, self.ext, self.param, self.is_folder, relpath)
+
+    @property
+    def pathspec(self):
+        return f"{os.path.normpath(self.path)}{self.ext}"
 
 
 @dataclass(frozen=False)
@@ -312,8 +312,6 @@ def main():
     args = parser.parse_args()
     filter = AssetFilter(args)
 
-    print(args.input.ext)
-
     assert args.input.ext in (
         ".xfl",
         ".trace",
@@ -328,7 +326,7 @@ def main():
 
     if not args.batch:
         for input_asset, output_path, focus_fn in filter.get_tasks(
-            args.input.path, args.output.path
+            args.input.pathspec, args.output.path
         ):
             print(
                 "processing:",
@@ -363,12 +361,12 @@ def main():
 
             output_location = args.output.matching_descendent(input)
             for input_asset, output_path, focus_fn in filter.get_tasks(
-                input.path, output_location.path
+                input.pathspec, output_location.path
             ):
                 print(
                     "processing:",
-                    f"{input.path}{input.ext}[{input_asset or ''}] ->",
-                    f"{output_path}{args.output.ext}",
+                    f"{input.path}[{input_asset or ''}] {input.ext} ->",
+                    f"{output_path} {args.output.ext}",
                 )
                 convert(
                     input.path,
