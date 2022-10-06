@@ -176,21 +176,38 @@ class SampleReader:
     def __init__(self, input_folder):
         self.input_folder = input_folder
 
-    def write(self, output_folder, filters):
-        for root, dirs, files in os.walk(self.input_folder):
-            output_dir = get_matching_path(self.input_folder, output_folder, root)
+    @classmethod
+    def load_assets(cls, input_path):
+        if input_path in cls._labels_by_asset:
+            return (
+                cls._labels_by_asset[input_path],
+                cls._assets_by_label[input_path],
+                cls._asset_paths_by_fla[input_path],
+            )
 
-            for d in dirs:
-                if not all(map(lambda x: x.allow_label(d), filters)):
-                    continue
-                os.makedirs(os.path.join(output_dir, d))
-            for f in files:
-                fla, asset = extract_ids(f)
-                if not all(map(lambda x: x.allow_fla(fla), filters)):
-                    continue
-                if not all(map(lambda x: x.allow_asset(asset), filters)):
-                    continue
-                shutil.copyfile(os.path.join(root, f), os.path.join(output_dir, f))
+        assets_path, ext = splitext(input_path)
+
+        if ext == ".samples":
+            reader = SampleReader(assets_path)
+            labels, orig_paths = reader.get_labels()
+        else:
+            raise Exception("cannot create a filter from input type", ext)
+
+        cls._labels_by_asset[input_path] = labels
+        cls._asset_paths_by_fla[input_path] = orig_paths
+
+        # reverse the labels dictionary so it's easier to find things by label
+        assets_by_label = defaultdict(set)
+        cls._assets_by_label[input_path] = assets_by_label
+        for asset, labels in labels.items():
+            for l in labels:
+                assets_by_label[l].add(asset)
+
+        return (
+            cls._labels_by_asset[input_path],
+            cls._assets_by_label[input_path],
+            cls._asset_paths_by_fla[input_path],
+        )
 
     def get_labels(self):
         result = defaultdict(set)

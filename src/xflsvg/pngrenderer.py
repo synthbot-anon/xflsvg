@@ -1,6 +1,7 @@
 import os
 from xml.etree import ElementTree
 
+from tqdm import tqdm
 from wand.image import Image
 from wand.color import Color
 
@@ -16,7 +17,7 @@ class PngRenderer(SvgRenderer):
         result = []
         xml_frames = super().compile(*args, **kwargs)
 
-        for i, xml in enumerate(xml_frames):
+        for i, xml in tqdm(enumerate(xml_frames), desc="converting to png"):
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
             png = Image(blob=svg, background=self.background).make_blob("png")
             result.append(png)

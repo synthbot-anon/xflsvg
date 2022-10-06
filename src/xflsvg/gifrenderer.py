@@ -2,6 +2,7 @@ import os
 from xml.etree import ElementTree
 
 from gifski import Gifski
+from tqdm import tqdm
 from wand.image import Image
 from wand.color import Color
 
@@ -23,7 +24,7 @@ class GifRenderer(SvgRenderer):
         width = None
         height = None
 
-        for xml in xml_frames:
+        for xml in tqdm(xml_frames, desc="creating gif"):
             svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
             image = Image(
                 blob=svg, background=self.background, width=width, height=height

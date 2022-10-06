@@ -2,8 +2,9 @@ from collections import defaultdict
 from contextlib import contextmanager
 import json
 import os
+import xml.etree.ElementTree as ET
 
-from xfl2svg.shape.shape import xfl_domshape_to_svg
+from xfl2svg.shape.shape import json_normalize_xfl_domshape
 
 from .util import ColorObject
 from .xflsvg import DOMShape, Frame, MaskedFrame, XflRenderer, consume_frame_identifier
@@ -53,8 +54,12 @@ class RenderTracer(XflRenderer):
         self.context = [[]]
 
     def render_shape(self, shape_snapshot, *args, **kwargs):
-        self.shapes[shape_snapshot.identifier] = shape_snapshot.domshape
-        self.labels
+        if shape_snapshot.identifier not in self.shapes:
+            shape = json_normalize_xfl_domshape(
+                ET.fromstring(shape_snapshot.domshape), self.mask_depth > 0
+            )
+            self.shapes[shape_snapshot.identifier] = shape
+        # self.labels
         self.context[-1].append(shape_snapshot.identifier)
 
     def push_transform(self, transformed_snapshot, *args, **kwargs):

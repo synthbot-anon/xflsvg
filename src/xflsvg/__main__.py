@@ -1,4 +1,6 @@
 import argparse
+from dataclasses import dataclass
+from genericpath import isdir
 from glob import glob
 import hashlib
 import json
@@ -6,13 +8,14 @@ import logging
 import os
 import re
 import traceback
+from tqdm import tqdm
 
 from .filter import AssetFilter
 from .gifrenderer import GifRenderer
 from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
-from .samplerenderer import SampleRenderer
+from .samplerenderer import SampleReader, SampleRenderer
 from .util import splitext, get_matching_path
 from .xflsvg import XflReader
 
@@ -21,6 +24,8 @@ from .xflsvg import XflReader
 # ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof), MLP422_027 (when focusing on Twilight,
 # ... there's one behind the background)
 # known missing stuff: LinearGradient for strokes
+# head roll (loop issue): f-MLP214__138.xfl_s-fafa_tRD_sCharacter.sym.gif
+# flashing leg: f-MLP214__390.xfl_s-_tPP_sCharacter.sym.gif
 
 
 def as_number(data):
@@ -29,7 +34,7 @@ def as_number(data):
 
 
 def should_process(data, args):
-    return as_number(data) % args.par == args.id
+    return (as_number(data) - args.id) % args.par == 0
 
 
 def output_completed(output_path):
@@ -60,12 +65,25 @@ def unlock_output(output_path):
     os.remove(f"{output_path}.lock")
 
 
-def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
+def convert(
+    input_path,
+    input_type,
+    input_asset,
+    output_path,
+    output_type,
+    asset_filter,
+    focus_fn,
+    args,
+):
+    print("output:", output_path, output_type)
     input_path = os.path.normpath(input_path)
-    if input_path.lower().endswith(".xfl"):
-        input_folder = os.path.dirname(input_path)
+    if input_type == ".xfl":
+        if os.path.isdir(input_path):
+            input_folder = input_path
+        else:
+            input_folder = os.path.dirname(input_path)
         reader = XflReader(input_folder, asset_filter)
-    elif input_path.lower().endswith(".trace"):
+    elif input_type == ".trace":
         input_folder = os.path.dirname(input_path)
         reader = RenderTraceReader(input_folder, asset_filter)
     else:
@@ -73,23 +91,26 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
 
-    output_path = os.path.normpath(output_path)
-    if output_path.lower().endswith(".svg"):
+    if output_type == ".svg":
         renderer = SvgRenderer()
+        output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
-    elif output_path.lower().endswith(".png"):
+    elif output_type == ".png":
         renderer = PngRenderer(background=args.background)
+        output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
-    elif output_path.lower().endswith(".gif"):
+    elif output_type == ".gif":
         renderer = GifRenderer(background=args.background)
+        output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
-    elif output_path.lower().endswith(".samples"):
+    elif output_type == ".samples":
         renderer = SampleRenderer()
-        output_folder = splitext(output_path)[0]
-        output_path = output_folder
-    elif os.path.isdir(output_path) or not os.path.exists(output_path):
-        renderer = RenderTracer()
         output_folder = output_path
+        output_path = f"{output_path}/{output_type}"
+    elif output_type == ".trace":
+        renderer = RenderTracer()
+        output_path = f"{output_path}{output_type}"
+        output_folder = os.path.dirname(output_path)
     else:
         raise Exception(
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
@@ -99,8 +120,7 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
         print("already completed:", output_path)
         return
 
-    if output_folder:
-        os.makedirs(output_folder, exist_ok=True)
+    os.makedirs(output_folder, exist_ok=True)
     lock_output(output_path)
 
     logging.basicConfig(
@@ -114,12 +134,12 @@ def convert(input_path, output_path, asset, asset_filter, focus_fn, args):
         renderer.set_camera(*reader.get_camera())
 
     try:
-        timeline = reader.get_timeline(asset)
+        timeline = reader.get_timeline(input_asset)
         with asset_filter.filtered_render_context(reader.id, renderer, focus_fn):
             frames = list(timeline)
             if args.no_stills and len(frames) <= 1:
                 return
-            for frame in frames:
+            for frame in tqdm(frames, desc="compiling clip"):
                 frame.render()
 
         renderer.compile(
@@ -149,24 +169,74 @@ def get_matching_path(input_root, output_root, input_path):
     return os.path.join(output_root, relpath)
 
 
-def splitext(path):
-    folder, filename = os.path.split(path)
-    if "." in filename:
-        name, ext = filename.rsplit(".", maxsplit=1)
-        return os.path.join(folder, name), f".{ext}"
-    return path, ""
+@dataclass(frozen=True)
+class InputFileSpec:
+    path: str
+    ext: str
+    param: str
+    is_folder: bool
+    relpath: str
+
+    _labels_by_asset = {}
+    _assets_by_label = {}
+    _asset_paths_by_fla = {}
+
+    @classmethod
+    def from_spec(cls, spec, root=None):
+        if "[" in spec:
+            param_start = spec.find("[") + 1
+            assert spec[-1] == "]"
+
+            param = spec[param_start:-1]
+            spec = spec[: param_start - 1]
+        else:
+            param = None
+
+        path, ext = splitext(spec)
+
+        is_folder = (not os.path.isfile(path)) or (path[-1] in ("/", "\\"))
+
+        # TODO: make this work on windows
+        if root == None:
+            if spec[0] == "/":
+                root = "/"
+            else:
+                root = ""
+
+        relpath = os.path.relpath(path, root)
+
+        return InputFileSpec(path, ext.lower(), param, is_folder, relpath)
+
+    def subspec(self, path):
+        relpath = os.path.relpath(path, self.path)
+        return InputFileSpec(path, self.ext, self.param, self.is_folder, relpath)
+
+
+@dataclass(frozen=False)
+class OutputFileSpec:
+    path: str
+    ext: str
+
+    @classmethod
+    def from_spec(cls, spec):
+        path, ext = splitext(spec)
+        return OutputFileSpec(path, ext)
+
+    def matching_descendent(self, input):
+        new_path = os.path.join(self.path, input.relpath)
+        return OutputFileSpec(new_path, self.ext)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "input",
-        type=str,
+        type=InputFileSpec.from_spec,
         help='Input file or folder. This can be an XFL file (/path/to/file.xfl) or a render trace (/path/to/trace/). To specify a timeline, you can append the symbol name in brackets ("/file.xfl[~Octavia*Character]"). To specify multiple timelines, you can specify a symbol sample label folder in brackets ("/file.xfl[/path/to/labels/.samples]")',
     )
     parser.add_argument(
         "output",
-        type=str,
+        type=OutputFileSpec.from_spec,
         help="Output file or folder. This can be a render trace (/path/to/folder/.trace), an SVG (/path/to/file.svg), a PNG (.../file.png), a GIF (.../file.gif), or a symbol sample folder (.../folder/.samples).",
     )
     parser.add_argument(
@@ -209,17 +279,17 @@ def main():
     )
     parser.add_argument(
         "--discard",
-        type=str,
+        type=InputFileSpec.from_spec,
         help='Skip rendering any assets in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Noisy,SizeRef]").',
     )
     parser.add_argument(
         "--retain",
-        type=str,
+        type=InputFileSpec.from_spec,
         help='Skip rendering assets NOT in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Clean,Noisy]").',
     )
     parser.add_argument(
         "--focus",
-        type=str,
+        type=InputFileSpec.from_spec,
         help='Individually render each asset in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Clean,Noisy]").',
     )
     parser.add_argument(
@@ -240,75 +310,81 @@ def main():
     )
 
     args = parser.parse_args()
-    input = args.input.split("[", maxsplit=1)[0].rstrip("/\\")
     filter = AssetFilter(args)
 
-    input_folder, source_type = splitext(input)
-    output, target_type = splitext(args.output)
+    print(args.input.ext)
 
-    source_type = source_type.lower()
-    target_type = target_type.lower()
-
-    assert source_type in (
+    assert args.input.ext in (
         ".xfl",
         ".trace",
     ), "Input arg must end in either .xfl or .trace"
-    assert target_type in (
+    assert args.output.ext in (
         ".svg",
         ".png",
         ".gif",
         ".samples",
         ".trace",
-    ), "Output arg must end in either .svg or /"
+    ), "Output arg must end in either .svg, .png, .gif, .samples, or .trace"
 
     if not args.batch:
-        for timeline, output_path, focus_fn in filter.get_tasks(
-            input_folder, output, False
+        for input_asset, output_path, focus_fn in filter.get_tasks(
+            args.input.path, args.output.path
         ):
-            print("processing:", f"{input}", f"{output_path}{target_type}", timeline)
+            print(
+                "processing:",
+                f"{args.input.path}{args.input.ext}[{input_asset or ''}] ->",
+                f"{output_path}{args.output.ext}",
+            )
             convert(
-                input, f"{output_path}{target_type}", timeline, filter, focus_fn, args
+                args.input.path,
+                args.input.ext,
+                input_asset,
+                output_path,
+                args.output.ext,
+                filter,
+                focus_fn,
+                args,
             )
         return
 
-    for root, dirs, files in os.walk(input_folder, followlinks=True):
+    for root, dirs, files in os.walk(args.input.path, followlinks=True):
         for fn in files:
-            if not should_process(os.path.join(root, fn), args):
+            if not fn.lower().endswith(args.input.ext):
                 continue
 
-            if source_type == ".xfl":
-                name, extension = splitext(fn)
-                if extension.lower() != ".xfl":
-                    continue
-                input_path = os.path.join(root, fn)
-            elif source_type == ".trace":
-                if fn.lower() != "frames.json":
-                    continue
-                input_path = os.path.join(root, fn)
+            if args.input.ext == ".xfl":
+                # use the directory path for xfl files
+                input = args.input.subspec(f"{root}/")
+            else:
+                input = args.input.subset(os.path.join(root, fn))
 
-            input_relpath = os.path.relpath(root, input_folder)
-            completed_conversions = {}
-            for timeline, output_path, focus_fn in filter.get_tasks(
-                input_relpath, output, True
+            if not should_process(input.relpath, args):
+                continue
+
+            output_location = args.output.matching_descendent(input)
+            for input_asset, output_path, focus_fn in filter.get_tasks(
+                input.path, output_location.path
             ):
-                if timeline in completed_conversions:
-                    # TODO: copy the result over
-                    pass
-
                 print(
-                    "processing:", input_path, f"{output_path}{target_type}", timeline
+                    "processing:",
+                    f"{input.path}{input.ext}[{input_asset or ''}] ->",
+                    f"{output_path}{args.output.ext}",
                 )
                 convert(
-                    input_path,
-                    f"{output_path}{target_type}",
-                    timeline,
+                    input.path,
+                    input.ext,
+                    input_asset,
+                    output_path,
+                    args.output.ext,
                     filter,
                     focus_fn,
                     args,
                 )
 
-                completed_conversions[timeline] = output_path
-            break
+            if args.input.ext == ".xfl":
+                # we matched on a file in the directory for xfls
+                # so break since the whole directory has been processed
+                break
 
 
 if __name__ == "__main__":

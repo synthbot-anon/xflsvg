@@ -4,17 +4,13 @@ import os
 from typing import Set, Tuple
 
 from .util import splitext, get_matching_path
-from .samplerenderer import SampleReader, create_filename
+from .samplerenderer import create_filename, SampleReader
 from .xflsvg import Frame
 
 
 class AssetFilter:
     def __init__(self, args):
         self.check_fn = None
-
-        self._labels_by_asset = {}
-        self._assets_by_label = {}
-        self._asset_paths_by_fla = {}
 
         self._allowed_tasks_by_path = None
         self._output_paths_by_fla = {}
@@ -63,55 +59,14 @@ class AssetFilter:
             self._finish_on_frame = None
             self._finished = False
 
-    def parse_allowed_tasks(self, input_spec):
-        if "[" not in input_spec:
-            return None
-
-        result = {}
-        input_path, filter_spec = input_spec.split("[", maxsplit=1)
-        filtered_lists, self._output_paths_by_fla = self.get_filtered_list(filter_spec)
-
-        for fla, asset in filtered_lists:
-            result.setdefault(fla, set()).add(asset)
-
-        return result
-
-    def get_tasks(self, input_relpath, output_path, batch):
-        basename = os.path.basename(os.path.normpath(input_relpath))
-        filename, ext = splitext(basename)
-        filename = filename.rstrip("/\\")
-
-        if self._allowed_tasks_by_path == None:
-            if self.focus_list_by_fla == None:
-                if not batch:
-                    output = output_path
-                else:
-                    output = os.path.join(output_path, input_relpath)
-                yield None, output, lambda x: True
-            else:
-                for focus_item in self.focus_list_by_fla[filename]:
-                    for relpath in self._output_paths_by_fla[filename][focus_item]:
-                        dirname = os.path.dirname(relpath)
-                        new_fn = create_filename(filename, focus_item, None, None)
-                        yield None, f"{output_path}/{dirname}/{new_fn}", focus_item
-            return
-
-        if filename not in self._allowed_tasks_by_path:
-            return
-
-        for asset, relpaths in self._output_paths_by_fla[filename].items():
-            for relpath in relpaths:
-                for focus_fn in self.focus_list_by_fla[filename]:
-                    yield asset, os.path.join(output_path, relpath), focus_fn
-
-    def allow_asset(self, fla, asset):
-        return self.check_fn((fla, asset))
-
-    def get_filtered_list(self, filter_spec) -> Set[Tuple[str, str]]:
+    @classmethod
+    def get_filtered_list(cls, filter_spec) -> Set[Tuple[str, str]]:
         input_path = filter_spec.split("[", maxsplit=1)[0]
-        labels_by_asset, assets_by_label, asset_paths_by_fla = self.load_assets(
-            input_path
-        )
+        (
+            labels_by_asset,
+            assets_by_label,
+            asset_paths_by_fla,
+        ) = SampleReader.load_samples(input_path)
 
         if "[" not in filter_spec:
             return labels_by_asset.keys(), asset_paths_by_fla
@@ -129,37 +84,43 @@ class AssetFilter:
 
         return result, asset_paths_by_fla
 
-    def load_assets(self, input_path):
-        if input_path in self._labels_by_asset:
-            return (
-                self._labels_by_asset[input_path],
-                self._assets_by_label[input_path],
-                self._asset_paths_by_fla[input_path],
-            )
+    def parse_allowed_tasks(self, input):
+        if not input.param:
+            return None
 
-        assets_path, ext = splitext(input_path)
+        result = {}
+        filtered_lists, self._output_paths_by_fla = self.get_filtered_list(input.param)
 
-        if ext == ".samples":
-            reader = SampleReader(assets_path)
-            labels, orig_paths = reader.get_labels()
+        for fla, asset in filtered_lists:
+            result.setdefault(fla, set()).add(asset)
+
+        return result
+
+    def get_tasks(self, input_path, output_path):
+        basename = os.path.basename(os.path.normpath(input_path))
+        filename, ext = splitext(basename)
+        filename = filename.rstrip("/\\")
+
+        if self._allowed_tasks_by_path == None:
+            if self.focus_list_by_fla == None:
+                yield None, output_path, None
+            else:
+                for focus_item in self.focus_list_by_fla[filename]:
+                    for relpath in self._output_paths_by_fla[filename][focus_item]:
+                        dirname = os.path.dirname(relpath)
+                        new_fn = create_filename(filename, focus_item, None, None)
+                        yield None, f"{output_path}/{dirname}/{new_fn}", focus_item
         else:
-            raise Exception("cannot create a filter from input type", ext)
+            if filename not in self._allowed_tasks_by_path:
+                return
 
-        self._labels_by_asset[input_path] = labels
-        self._asset_paths_by_fla[input_path] = orig_paths
+            for asset, relpaths in self._output_paths_by_fla[filename].items():
+                for relpath in relpaths:
+                    for focus_fn in self.focus_list_by_fla[filename]:
+                        yield asset, os.path.join(output_path, relpath), focus_fn
 
-        # reverse the labels dictionary so it's easier to find things by label
-        assets_by_label = defaultdict(set)
-        self._assets_by_label[input_path] = assets_by_label
-        for asset, labels in labels.items():
-            for l in labels:
-                assets_by_label[l].add(asset)
-
-        return (
-            self._labels_by_asset[input_path],
-            self._assets_by_label[input_path],
-            self._asset_paths_by_fla[input_path],
-        )
+    def allow_asset(self, fla, asset):
+        return self.check_fn((fla, asset))
 
     def wrap_push_transform(self, push_transform):
         def _modified(frame, *args, **kwargs):

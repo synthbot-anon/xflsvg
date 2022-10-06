@@ -246,12 +246,11 @@ def _get_edges_by_startpoint(shape):
         edge_list = edge.get("edges")
         if not edge_list:
             continue
-        point_lists = edge_format_to_point_lists(edge_list)
-        for pl, bbox in point_lists:
+        for pl in edge_format_to_point_lists(edge_list):
             for pt in pl:
-                if type(pt) in (list, tuple):
+                if type(pt[0]) in (list, tuple):
                     continue
-                x, y = [20 * float(x) for x in pt.split(" ")]
+                x, y = (20 * pt[0], 20 * pt[1])
                 result.add((x, y), edge_str)
 
     return result
