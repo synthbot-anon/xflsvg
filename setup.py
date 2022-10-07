@@ -57,7 +57,7 @@ SOFTWARE.
             'numpy',
             'Wand',
             'tqdm',
-            'xfl2svg @ git+https://github.com/synthbot-anon/PluieElectrique-xfl2svg.git@experimental',
+            'xfl2svg @ git+https://github.com/synthbot-anon/PluieElectrique-xfl2svg.git',
             'kdtree @ git+https://github.com/synthbot-anon/Vectorized-Python-KD-Tree.git',
             'gifski @ git+https://github.com/synthbot-anon/ImageOptim-gifski.git'
     ],
