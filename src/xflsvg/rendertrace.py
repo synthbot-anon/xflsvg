@@ -142,12 +142,10 @@ class RenderTraceReader:
         self._reversed_frames = None
 
         for frame_id, label in self.labels.items():
-            print("checking", label)
             if "timeline" in label:
                 if label["timeline"].lower().startswith("document://"):
                     self.camera = [0, 0, label["width"], label["height"]]
                     self.id = urlparse(label["source"]).netloc
-                    print("id:", self.id)
                     break
 
     def get_camera(self):

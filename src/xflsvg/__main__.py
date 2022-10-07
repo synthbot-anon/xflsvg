@@ -75,7 +75,6 @@ def convert(
     focus_fn,
     args,
 ):
-    print("output:", output_path, output_type)
     input_path = os.path.normpath(input_path)
     if input_type == ".xfl":
         if os.path.isdir(input_path):
