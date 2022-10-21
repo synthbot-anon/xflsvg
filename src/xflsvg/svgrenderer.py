@@ -115,10 +115,15 @@ class SvgRenderer(XflRenderer):
         self.force_height = None
 
     def render_shape(self, shape_snapshot, *args, **kwargs):
-        svg = self.mask_cache.get(shape_snapshot.identifier, None)
+        if self.mask_depth == 0:
+            cache = self.shape_cache
+        else:
+            cache = self.mask_cache
+        
+        svg = cache.get(shape_snapshot.identifier, None)
         if not svg:
             svg = shape_frame_to_svg(shape_snapshot, self.mask_depth != 0)
-            self.mask_cache[shape_snapshot.identifier] = svg
+            cache[shape_snapshot.identifier] = svg
 
         fill_g, stroke_g, extra_defs, shape_box = svg
 

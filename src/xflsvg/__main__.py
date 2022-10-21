@@ -16,12 +16,12 @@ from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
 from .samplerenderer import SampleReader, SampleRenderer
-from .util import splitext, get_matching_path
+from .util import splitext, get_matching_path, InputFileSpec, OutputFileSpec
 from .xflsvg import XflReader
 
 
 # known buggy files: MLP509_414 (tween), MLP422_593 and MLP509_056 (shape), MLP509_275 (stroke id)
-# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof), MLP422_027 (when focusing on Twilight,
+# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof), MLP422_027 (when isolating Twilight,
 # ... there's one behind the background)
 # known missing stuff: LinearGradient for strokes
 # head roll (loop issue): f-MLP214__138.xfl_s-fafa_tRD_sCharacter.sym.gif
@@ -72,7 +72,7 @@ def convert(
     output_path,
     output_type,
     asset_filter,
-    focus_fn,
+    isolate_item,
     args,
 ):
     input_path = os.path.normpath(input_path)
@@ -101,6 +101,7 @@ def convert(
         renderer = GifRenderer(background=args.background)
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        print('output path:', output_path)
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
@@ -117,7 +118,8 @@ def convert(
         print("already completed:", output_path)
         return
 
-    os.makedirs(output_folder, exist_ok=True)
+    if output_folder:
+        os.makedirs(output_folder, exist_ok=True)
     lock_output(output_path)
 
     logging.basicConfig(
@@ -132,7 +134,7 @@ def convert(
 
     try:
         timeline = reader.get_timeline(input_asset)
-        with asset_filter.filtered_render_context(reader.id, renderer, focus_fn):
+        with asset_filter.filtered_render_context(reader.id, renderer, isolate_item):
             frames = list(timeline)
             if args.no_stills and len(frames) <= 1:
                 return
@@ -164,66 +166,6 @@ def convert(
 def get_matching_path(input_root, output_root, input_path):
     relpath = os.path.relpath(input_path, input_root)
     return os.path.join(output_root, relpath)
-
-
-@dataclass(frozen=True)
-class InputFileSpec:
-    path: str
-    ext: str
-    param: str
-    is_folder: bool
-    relpath: str
-
-    @classmethod
-    def from_spec(cls, spec, root=None):
-        if "[" in spec:
-            param_start = spec.find("[") + 1
-            assert spec[-1] == "]"
-
-            param = spec[param_start:-1]
-            spec = spec[: param_start - 1]
-        else:
-            param = None
-
-        path, ext = splitext(spec)
-        if os.path.exists(spec):
-            path = spec
-
-        is_folder = (not os.path.isfile(path)) or (path[-1] in ("/", "\\"))
-
-        # TODO: make this work on windows
-        if root == None:
-            if spec[0] == "/":
-                root = "/"
-            else:
-                root = ""
-
-        relpath = os.path.relpath(path, root)
-
-        return InputFileSpec(path, ext.lower(), param, is_folder, relpath)
-
-    def subspec(self, path):
-        relpath = os.path.relpath(path, self.path)
-        return InputFileSpec(path, self.ext, self.param, self.is_folder, relpath)
-
-    @property
-    def pathspec(self):
-        return f"{os.path.normpath(self.path)}{self.ext}"
-
-
-@dataclass(frozen=False)
-class OutputFileSpec:
-    path: str
-    ext: str
-
-    @classmethod
-    def from_spec(cls, spec):
-        path, ext = splitext(spec)
-        return OutputFileSpec(path, ext)
-
-    def matching_descendent(self, input):
-        new_path = os.path.join(self.path, input.relpath)
-        return OutputFileSpec(new_path, self.ext)
 
 
 def main():
@@ -287,7 +229,7 @@ def main():
         help='Skip rendering assets NOT in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Clean,Noisy]").',
     )
     parser.add_argument(
-        "--focus",
+        "--isolate",
         type=InputFileSpec.from_spec,
         help='Individually render each asset in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Clean,Noisy]").',
     )
@@ -324,8 +266,8 @@ def main():
     ), "Output arg must end in either .svg, .png, .gif, .samples, or .trace"
 
     if not args.batch:
-        for input_asset, output_path, focus_fn in filter.get_tasks(
-            args.input.pathspec, args.output.path
+        for input_asset, output_path, isolated_item in filter.get_tasks(
+            args.input, args.output.path
         ):
             print(
                 "processing:",
@@ -339,7 +281,7 @@ def main():
                 output_path,
                 args.output.ext,
                 filter,
-                focus_fn,
+                isolated_item,
                 args,
             )
         return
@@ -359,8 +301,8 @@ def main():
                 continue
 
             output_location = args.output.matching_descendent(input)
-            for input_asset, output_path, focus_fn in filter.get_tasks(
-                input.pathspec, output_location.path
+            for input_asset, output_path, isolated_item in filter.get_tasks(
+                input, output_location.path
             ):
                 print(
                     "processing:",
@@ -374,7 +316,7 @@ def main():
                     output_path,
                     args.output.ext,
                     filter,
-                    focus_fn,
+                    isolated_item,
                     args,
                 )
 

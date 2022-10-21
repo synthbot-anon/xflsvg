@@ -64,7 +64,8 @@ class ColorObject:
     @property
     def id(self):
         """Unique ID used to dedup SVG elements in <defs>."""
-        return f"Filter_{hash(self) & 0xFFFFFFFFFFFFFFFF:16x}"
+        result = f"Filter_{hash(self) & 0xFFFFFFFFFFFFFFFF:016x}"
+        return result
 
 
 def splitext(path):
@@ -79,3 +80,59 @@ def splitext(path):
 def get_matching_path(input_root, output_root, input_path):
     relpath = os.path.relpath(input_path, input_root)
     return os.path.join(output_root, relpath)
+
+@dataclass(frozen=True)
+class InputFileSpec:
+    path: str
+    ext: str
+    param: str
+    relpath: str
+
+    @classmethod
+    def from_spec(cls, spec, root=None):
+        if "[" in spec:
+            param_start = spec.find("[") + 1
+            assert spec[-1] == "]"
+
+            param = spec[param_start:-1]
+            spec = spec[: param_start - 1]
+        else:
+            param = None
+
+        path, ext = splitext(spec)
+        if os.path.exists(spec):
+            path = spec
+
+        # TODO: make this work on windows
+        if root == None:
+            if spec[0] == "/":
+                root = "/"
+            else:
+                root = ""
+
+        relpath = os.path.relpath(path, root)
+
+        return InputFileSpec(path, ext.lower(), param, relpath)
+
+    def subspec(self, path):
+        relpath = os.path.relpath(path, self.path)
+        return InputFileSpec(path, self.ext, self.param, relpath)
+
+    @property
+    def pathspec(self):
+        return f"{os.path.normpath(self.path)}{self.ext}"
+
+
+@dataclass(frozen=False)
+class OutputFileSpec:
+    path: str
+    ext: str
+
+    @classmethod
+    def from_spec(cls, spec):
+        path, ext = splitext(spec)
+        return OutputFileSpec(path, ext)
+
+    def matching_descendent(self, input):
+        new_path = os.path.join(self.path, input.relpath)
+        return OutputFileSpec(new_path, self.ext)

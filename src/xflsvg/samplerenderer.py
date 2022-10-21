@@ -111,9 +111,7 @@ def extract_ids(filepath):
     if frame_start == -1 or frame_end == -1:
         frame = 0
     else:
-        print("got frame from", filepath, frame_start, frame_end)
         frame = int(name[frame_start:frame_end])
-        print("frame:", frame)
     return (
         extract_fla_name(filepath),
         extract_symbol_name(filepath),

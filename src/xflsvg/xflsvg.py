@@ -334,6 +334,7 @@ class DOMSymbolInstance(Element):
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
         )
+
         return result
 
     def __len__(self) -> int:
@@ -512,14 +513,20 @@ def shape_tween(element_tweens):
     @contextmanager
     def _tween(n):
         initial_frames = [x.svg_frame for x, y in element_tweens]
+        initial_matrices = [x.matrix for x, y in element_tweens]
+
         try:
             for domshape, svg_frames in element_tweens:
                 domshape.svg_frame = svg_frames[n]
+                if n != 0:
+                    domshape.matrix = None
             yield
         finally:
             for i, data in enumerate(element_tweens):
                 domshape, svg_frames = data
                 domshape.svg_frame = initial_frames[i]
+                if n != 0:
+                    domshape.matrix = initial_matrices[i]
 
     return _tween
 
@@ -611,6 +618,10 @@ class DOMFrame(AnimationObject, FrameContext):
         self.eases = _get_eases(self.xmlnode)
 
         if self.tween_type == "motion":
+            rotation = float(self.xmlnode.get('motionTweenRotateTimes', 0))
+            if self.xmlnode.get('motionTweenRotate') == 'clockwise':
+                rotation *= -1
+
             start_element = list(
                 filter(lambda x: isinstance(x, DOMSymbolInstance), self.elements)
             )
@@ -628,6 +639,7 @@ class DOMFrame(AnimationObject, FrameContext):
                         start.matrix,
                         end.matrix,
                         self.duration + 1,
+                        rotation,
                         self.eases,
                     )
                 )
@@ -659,6 +671,8 @@ class DOMFrame(AnimationObject, FrameContext):
             element_tweens = []
 
             for start, end in zip(start_element, end_element):
+                print('asset:', self.asset.id, 'frame_start:', self.start_frame_index)
+                print('interp...')
                 shape_data = list(
                     shape_interpolation(
                         segment_xmlnodes,
@@ -668,6 +682,7 @@ class DOMFrame(AnimationObject, FrameContext):
                         self.eases,
                     )
                 )
+                print('done\n\n')
                 shapes = []
                 for i, data in enumerate(shape_data):
                     shape_frame = self.xflsvg.get_shape(
@@ -734,6 +749,12 @@ def _get_mask_layer(asset, xmlnode):
 
     return None
 
+
+def _is_mask_empty(mask_frame):
+    for child in mask_frame.children:
+        if len(child.children) != 0:
+            return False
+    return True
 
 class Layer(AnimationObject):
     def __init__(self, xflsvg, asset: "Asset", id: str, index: int, xmlnode):
@@ -837,16 +858,19 @@ class Asset(AnimationObject):
         masked_frames = {}
         for layer in self.layers:
             if layer.layer_type == "mask":
-                layer_frame = MaskedFrame(layer[frame_index])
-                layer_frame.owner_element = self
-                layer_frame.frame_index = frame_index
+                mask = layer[frame_index]
+                # XFL quirk: only mask a layer if some mask elements are defined
+                if not _is_mask_empty(mask):
+                    layer_frame = MaskedFrame(mask)
+                    layer_frame.owner_element = self
+                    layer_frame.frame_index = frame_index
 
-                masked_frames[layer.index] = layer_frame
-                new_frame.prepend_child(layer_frame)
+                    masked_frames[layer.index] = layer_frame
+                    new_frame.prepend_child(layer_frame)
 
             elif layer.layer_type == "normal":
                 layer_frame = layer[frame_index]
-                if layer.mask_layer:
+                if layer.mask_layer and layer.mask_layer.index in masked_frames:
                     masked_frames[layer.mask_layer.index].prepend_child(layer_frame)
                 else:
                     new_frame.prepend_child(layer_frame)

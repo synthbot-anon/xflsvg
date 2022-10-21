@@ -32,23 +32,33 @@ def serialize_matrix(linear, translation):
     ]
 
 
-def matrix_interpolation(start, end, n_frames, ease):
+def matrix_interpolation(start, end, n_frames, rotation, ease):
     start_linear, start_translation = deserialize_matrix(start)
     end_linear, end_translation = deserialize_matrix(end)
 
     srot, sshear, sx, sy = adobe_decomposition(start_linear)
     erot, eshear, ex, ey = adobe_decomposition(end_linear)
 
-    if abs(erot - srot) > math.pi:
+    if rotation > 0:
+        if erot < srot:
+            erot += 2 * math.p
+        erot += rotation * 2 * math.pi
+    elif rotation < 0:
+        if erot > srot:
+            erot -= 2 * math.pi
+        erot += rotation * 2 * math.pi
+    elif abs(erot - srot) > math.pi:
         srot += (erot - srot) / abs(erot - srot) * 2 * math.pi
-
+    if abs(eshear - sshear) > math.pi:
+        sshear += (eshear - sshear) / abs(eshear - sshear) * 2 * math.pi
+    
     for i in range(n_frames):
         frot = ease["rotation"](i / (n_frames - 1)).y
         fscale = ease["scale"](i / (n_frames - 1)).y
         fpos = ease["position"](i / (n_frames - 1)).y
 
         interpolated_linear = adobe_matrix(
-            frot * erot + (1 - frot) * srot,
+            frot * (erot) + (1 - frot) * srot,
             frot * eshear + (1 - frot) * sshear,
             fscale * ex + (1 - fscale) * sx,
             fscale * ey + (1 - fscale) * sy,
@@ -63,8 +73,6 @@ def matrix_interpolation(start, end, n_frames, ease):
 def adobe_decomposition(a):
     rotation = math.atan2(a[1, 0], a[0, 0])
     shear = math.pi / 2 + rotation - math.atan2(a[1, 1], a[0, 1])
-    if math.cos(shear) < 0:
-        shear = shear % (math.pi * 2) - 2 * math.pi
     scale_x = math.sqrt(a[0, 0] ** 2 + a[1, 0] ** 2)
     scale_y = math.sqrt(a[0, 1] ** 2 + a[1, 1] ** 2)
 
@@ -80,9 +88,7 @@ def adobe_matrix(rotation, shear, scale_x, scale_y):
     )
 
     skew_matrix = numpy.array([[1, math.tan(shear)], [0, 1]])
-
     scale_matrix = numpy.array([[scale_x, 0], [0, scale_y * math.cos(shear)]])
-
     return rotation_matrix @ skew_matrix @ scale_matrix
 
 
@@ -94,7 +100,7 @@ def color_interpolation(start, end, n_frames, ease):
         start = _COLOR_IDENTITIY
     if end == None:
         end = _COLOR_IDENTITIY
-
+    
     for i in range(n_frames):
         frac = ease["color"](i / (n_frames - 1)).y
         # need to do filters too
