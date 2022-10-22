@@ -88,17 +88,22 @@ def convert(
         raise Exception(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
+    
+    background = None
+    if args.use_document_attrs:
+        background = reader.get_background()
+    background = background or args.background
 
     if output_type == ".svg":
         renderer = SvgRenderer()
         output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
     elif output_type == ".png":
-        renderer = PngRenderer(background=args.background)
+        renderer = PngRenderer(background=background)
         output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
     elif output_type == ".gif":
-        renderer = GifRenderer(background=args.background)
+        renderer = GifRenderer(background=background)
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
         print('output path:', output_path)
@@ -129,7 +134,7 @@ def convert(
     )
     logging.captureWarnings(True)
 
-    if args.use_camera:
+    if args.use_document_attrs:
         renderer.set_camera(*reader.get_camera())
 
     try:
@@ -147,6 +152,7 @@ def convert(
             padding=args.padding,
             scale=args.scale,
             skip_leading_blanks=args.skip_leading_blanks,
+            background=background,
         )
 
         unlock_output(output_path)
@@ -214,9 +220,9 @@ def main():
         help="Padding width (in pixels) to use in the output. This only applies to SVG outputs. It is applied after any scaling.",
     )
     parser.add_argument(
-        "--use-camera",
+        "--use-document-attrs",
         action="store_true",
-        help="Use the camera box relevant to the scene. This should only be used when rendering a scene, not when rendering a symbol. This only applies to SVG outputs. If not set, use whatever box fits the frame being rendered.",
+        help="Use the camera box and background relevant to the scene. This should only be used when rendering a scene, not when rendering a symbol.",
     )
     parser.add_argument(
         "--discard",

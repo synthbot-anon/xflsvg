@@ -330,6 +330,21 @@ class DOMSymbolInstance(Element):
             frame_index = (self.first_frame + iteration) % loop_size
         else:
             raise Exception(f"Unknown loop type: {self.loop_type}")
+        
+        if self.target_asset.id == 'scene':
+            print('== scene', frame_index, '==')
+        
+        if self.target_asset.id == 'Cabin Junk Set 1':
+            print('cabin junk item', self.matrix)
+        
+        if self.target_asset.id == 'Object Position 5':
+            print('pos frame:', self.matrix)
+        
+        if self.target_asset.id == 'Object Up and down 5':
+            print('scale frame:', self.matrix)
+        
+        if self.target_asset.id == '-PR-Box_027':
+            print('box frame:', self.matrix)
 
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
@@ -437,7 +452,8 @@ class DOMGroup(Element, FrameContext):
 
 
 def _get_eases(xmlnode):
-    nop = easing.classicEase(0)
+    acceleration = int(xmlnode.get('acceleration', 0))
+    nop = easing.classicEase(acceleration)
 
     tweens = xmlnode.findChildren("tweens", recursive=False)
     if not tweens:
@@ -671,8 +687,6 @@ class DOMFrame(AnimationObject, FrameContext):
             element_tweens = []
 
             for start, end in zip(start_element, end_element):
-                print('asset:', self.asset.id, 'frame_start:', self.start_frame_index)
-                print('interp...')
                 shape_data = list(
                     shape_interpolation(
                         segment_xmlnodes,
@@ -682,7 +696,6 @@ class DOMFrame(AnimationObject, FrameContext):
                         self.eases,
                     )
                 )
-                print('done\n\n')
                 shapes = []
                 for i, data in enumerate(shape_data):
                     shape_frame = self.xflsvg.get_shape(
@@ -816,7 +829,7 @@ class Layer(AnimationObject):
 
 class Asset(AnimationObject):
     def __init__(
-        self, xflsvg, id: str, xmlnode, timeline=None, width=None, height=None
+        self, xflsvg, id: str, xmlnode, timeline=None, width=None, height=None, background=None
     ):
         super().__init__()
         self.xflsvg = xflsvg
@@ -827,6 +840,7 @@ class Asset(AnimationObject):
         self.frame_count = 0
         self.width = width
         self.height = height
+        self.background = background
 
         timeline = timeline or xmlnode.timeline
 
@@ -854,6 +868,8 @@ class Asset(AnimationObject):
             new_frame.data["width"] = self.width
         if self.height:
             new_frame.data["height"] = self.height
+        if self.background:
+            new_frame.data["background"] = self.background
 
         masked_frames = {}
         for layer in self.layers:
@@ -892,6 +908,7 @@ class Document(Asset):
     def __init__(self, xflsvg, xmlnode, timeline=0):
         self.width = float(xmlnode.DOMDocument.get("width", 550))
         self.height = float(xmlnode.DOMDocument.get("height", 400))
+        self.background = xmlnode.DOMDocument.get("background", "#FFFFFF")
 
         available_timelines = xmlnode.timelines.findChildren(
             "DOMTimeline", recursive=False
@@ -913,6 +930,7 @@ class Document(Asset):
             timeline=dom_timeline,
             width=self.width,
             height=self.height,
+            background=self.background,
         )
 
 
@@ -928,7 +946,6 @@ class XflReader:
             self.xmlnode = BeautifulSoup(document_file, "xml")
 
         self.background = self.xmlnode.DOMDocument.get("backgroundColor", "#FFFFFF")
-
         width = float(self.xmlnode.DOMDocument.get("width", 550))
         height = float(self.xmlnode.DOMDocument.get("height", 400))
         self.box = [0, 0, width, height]
@@ -950,6 +967,9 @@ class XflReader:
 
     def get_camera(self):
         return self.box
+    
+    def get_background(self):
+        return self.background
 
     def get_safe_asset(self, safe_asset_id):
         asset_id = html.unescape(safe_asset_id)

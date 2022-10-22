@@ -145,6 +145,7 @@ class RenderTraceReader:
             if "timeline" in label:
                 if label["timeline"].lower().startswith("document://"):
                     self.camera = [0, 0, label["width"], label["height"]]
+                    self.background = label["background"]
                     self.id = urlparse(label["source"]).netloc
                     break
 

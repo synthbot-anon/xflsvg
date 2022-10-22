@@ -154,19 +154,18 @@ class AssetFilter:
             return True
         
         found_match = False
-        if self.allow_relevant_assets:
-            for pattern_fla, pattern in self.relevant_asset_patterns:
-                if pattern_fla != fla and pattern_fla != None:
-                    continue
-                
-                if isinstance(pattern, str):
-                    if asset == pattern:
-                        found_match = True
-                        break
-                elif isinstance(pattern, re.Pattern):
-                    if pattern.match(asset):
-                        found_match = True
-                        break
+        for pattern_fla, pattern in self.relevant_asset_patterns:
+            if pattern_fla != fla and pattern_fla != None:
+                continue
+            
+            if isinstance(pattern, str):
+                if asset == pattern:
+                    found_match = True
+                    break
+            elif isinstance(pattern, re.Pattern):
+                if pattern.match(asset):
+                    found_match = True
+                    break
         
         return found_match == self.allow_relevant_assets
 
