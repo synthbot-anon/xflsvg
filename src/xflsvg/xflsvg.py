@@ -331,21 +331,6 @@ class DOMSymbolInstance(Element):
         else:
             raise Exception(f"Unknown loop type: {self.loop_type}")
         
-        if self.target_asset.id == 'scene':
-            print('== scene', frame_index, '==')
-        
-        if self.target_asset.id == 'Cabin Junk Set 1':
-            print('cabin junk item', self.matrix)
-        
-        if self.target_asset.id == 'Object Position 5':
-            print('pos frame:', self.matrix)
-        
-        if self.target_asset.id == 'Object Up and down 5':
-            print('scale frame:', self.matrix)
-        
-        if self.target_asset.id == '-PR-Box_027':
-            print('box frame:', self.matrix)
-
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
         )

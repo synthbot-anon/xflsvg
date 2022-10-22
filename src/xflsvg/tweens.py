@@ -1,13 +1,17 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from logging import warning
 import math
 import warnings
 import xml.etree.ElementTree as etree
 
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 import kd_tree
 import numpy
 from xfl2svg.shape.edge import EDGE_TOKENIZER, edge_format_to_point_lists
+from xfl2svg.shape.style import LinearGradient
+from xfl2svg.shape.gradient import interpolate_color
 
 from .util import ColorObject
 
@@ -101,6 +105,7 @@ def color_interpolation(start, end, n_frames, ease):
     if end == None:
         end = _COLOR_IDENTITIY
     
+    
     for i in range(n_frames):
         frac = ease["color"](i / (n_frames - 1)).y
         # need to do filters too
@@ -132,63 +137,108 @@ def interpolate_value(x, y, idx, duration, ease):
     return result
 
 
-def interpolate_color(x, y, i, duration, ease):
-    colx, ax = x
-    coly, ay = y
+# def interpolate_color(x, y, i, duration, ease):
+#     colx, ax = x
+#     coly, ay = y
 
-    rx, gx, bx = split_colors(colx)
-    ry, gy, by = split_colors(coly)
-    ri = round(interpolate_value(rx, ry, i, duration, ease["color"]))
-    gi = round(interpolate_value(gx, gy, i, duration, ease["color"]))
-    bi = round(interpolate_value(bx, by, i, duration, ease["color"]))
-    ai = round(interpolate_value(ax, ay, i, duration, ease["color"]))
-    return ("#%02X%02X%02X" % (ri, gi, bi), ai)
+#     rx, gx, bx = split_colors(colx)
+#     ry, gy, by = split_colors(coly)
+#     ri = round(interpolate_value(rx, ry, i, duration, ease["color"]))
+#     gi = round(interpolate_value(gx, gy, i, duration, ease["color"]))
+#     bi = round(interpolate_value(bx, by, i, duration, ease["color"]))
+#     ai = round(interpolate_value(ax, ay, i, duration, ease["color"]))
+#     return ("#%02X%02X%02X" % (ri, gi, bi), ai)
 
+
+@dataclass(frozen=True)
+class SolidColor:
+    color: str
+    alpha: float
+
+    def to_xfl(self):
+        return f"""<SolidColor color="{self.color}" alpha="{self.alpha}" />"""
+    
+    @classmethod
+    def interpolate(cls, x, y, frac):
+        new_color, new_alpha = interpolate_color(x.color, x.alpha, y.color, y.alpha, frac)
+        return SolidColor(new_color, new_alpha)
 
 def get_color_map(xmlnode, name):
     result = {}
     for child in xmlnode.findChildren(name, recursive=False):
         index = int(child.get("index"))
-        if child.SolidColor == None:
-            warnings.warn(f"missing SolidColor for a tween in {xmlnode}")
-            color = ("#000000", 0)
-        else:
-            color = (
+        if child.SolidColor != None:
+            color = SolidColor(
                 child.SolidColor.get("color", "#000000"),
                 float(child.SolidColor.get("alpha", 1)),
             )
+        elif child.LinearGradient != None:
+            color = LinearGradient.from_xfl(ET.fromstring(str(child.LinearGradient)))
+        elif child.RadialGradient != None:
+            assert False, "tweens.py cannot handle RadialGradients"
+        else:
+            warnings.warn(f"missing SolidColor/LinearGradient for a tween in {xmlnode}")
+            color = SolidColor("#000000", 0)
+            
         result[index] = color
     return result
 
 
-def interpolate_color_map(name, start, end, i, duration, ease):
+def interpolate_color_map(container_tag, style_tag, start, end, i, duration, ease):
     if not start:
-        return None, set()
+        # return None, set()
+        return ""
 
-    start_map = get_color_map(start, name)
-    end_map = get_color_map(end, name)
+    start_map = get_color_map(start, style_tag)
+    end_map = get_color_map(end, style_tag)
 
     if not start_map:
-        return start, start_map.keys()
+        # return start, start_map.keys()
+        return ""
 
     interp_map = {}
     for key, scol in start_map.items():
         if key not in end_map:
             continue
         ecol = end_map[key]
-        interp_map[key] = interpolate_color(scol, ecol, i, duration, ease)
+        
+        frac = ease['color'](i / (duration - 1)).y
+        assert type(scol) in (SolidColor, LinearGradient), f"tweens can only interpolate SolidColor and LinearGradient, not {type(scol)}"
+        
+        if type(scol) == LinearGradient:
+            if type(ecol) == LinearGradient:
+                interp_map[key] = LinearGradient.interpolate(scol, ecol, frac)
+            elif type(ecol) == SolidColor:
+                interp_map[key] = scol.interpolate_color(ecol.color, ecol.alpha, frac)
+        elif type(scol) == SolidColor:
+            if type(ecol) == LinearGradient:
+                interp_map[key] = ecol.interpolate_color(scol.color, scol.alpha, 1-frac)
+            elif type(ecol) == SolidColor:
+                interp_map[key] = SolidColor.interpolate(scol, ecol, frac)
 
-    result = BeautifulSoup(str(start), "xml")
-    for child in list(result.findChildren(name, recursive=False)):
+    result_lines = []
+    for child in list(start.findChildren(style_tag, recursive=False)):
         key = int(child.get("index"))
         if key not in interp_map:
+            result_lines.append(str(child))
             continue
-        color, alpha = interp_map[key]
-        child.SolidColor.set("color", color)
-        if alpha != 1:
-            child.SolidColor.set("alpha", alpha)
+        result_lines.append(f"""
+            <FillStyle index="{key}">
+                {interp_map[key].to_xfl()}
+            </FillStyle>
+        """)
+        # interp_map[key].to_xml
+        # color, alpha = interp_map[key]
+        # child.SolidColor.set("color", color)
+        # if alpha != 1:
+        #     child.SolidColor.set("alpha", alpha)
 
-    return result, set(interp_map.keys())
+    # return result, set(interp_map.keys())
+    return f"""
+        <{container_tag}>
+            {''.join(result_lines)}
+        </{container_tag}>
+    """
 
 
 def _segment_index(index):
@@ -273,15 +323,15 @@ def shape_interpolation(segment_xmlnodes, start, end, n_frames, ease):
     yield start.xmlnode
 
     for i in range(1, n_frames - 1):
-        fills, fill_keys = interpolate_color_map(
-            "FillStyle", start.xmlnode.fills, end.xmlnode.fills, i, n_frames, ease
+        fills = interpolate_color_map(
+            "fills", "FillStyle", start.xmlnode.fills, end.xmlnode.fills, i, n_frames, ease
         )
-        fills = fills and fills.fills or ""
+        # fills = fills and fills.fills or ""
 
-        strokes, stroke_keys = interpolate_color_map(
-            "StrokeStyle", start.xmlnode.strokes, end.xmlnode.strokes, i, n_frames, ease
+        strokes = interpolate_color_map(
+            "strokes", "StrokeStyle", start.xmlnode.strokes, end.xmlnode.strokes, i, n_frames, ease
         )
-        strokes = strokes and strokes.strokes or ""
+        # strokes = strokes and strokes.strokes or ""
 
         edges_by_startpoint = _get_edges_by_startpoint(start.xmlnode)
 
@@ -291,8 +341,8 @@ def shape_interpolation(segment_xmlnodes, start, end, n_frames, ease):
             # this one should always be None?
             fillStyle0 = None  # _segment_index(segment_xmlnode.get('fillIndex2', None))
             strokeStyle = _segment_index(segment_xmlnode.get("strokeIndex1", None))
-            if strokeStyle not in stroke_keys:
-                strokeStyle = None
+            # if strokeStyle not in stroke_keys:
+                # strokeStyle = None
 
             points = []
             startA = segment_xmlnode.get("startPointA", None)

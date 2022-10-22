@@ -89,10 +89,11 @@ def convert(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
     
-    background = None
-    if args.use_document_attrs:
-        background = reader.get_background()
-    background = background or args.background
+    background = (
+        args.background
+        or (args.use_document_attrs and reader.get_background())
+        or None
+    )
 
     if output_type == ".svg":
         renderer = SvgRenderer()
@@ -152,7 +153,6 @@ def convert(
             padding=args.padding,
             scale=args.scale,
             skip_leading_blanks=args.skip_leading_blanks,
-            background=background,
         )
 
         unlock_output(output_path)

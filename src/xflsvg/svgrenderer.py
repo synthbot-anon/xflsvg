@@ -266,7 +266,6 @@ class SvgRenderer(XflRenderer):
         padding=0,
         suffix=True,
         skip_leading_blanks=False,
-        background=None,
         *args,
         **kwargs,
     ):
@@ -295,12 +294,6 @@ class SvgRenderer(XflRenderer):
                     "viewBox": f"{x} {y} {width} {height}",
                 },
             )
-
-            if background:
-                bg = ET.SubElement(svg, "rect")
-                bg.set("width", "100%")
-                bg.set("height", "100%")
-                bg.set("fill", background)
 
             defs_element = ET.SubElement(svg, "defs")
             defs_element.extend(defs.values())
