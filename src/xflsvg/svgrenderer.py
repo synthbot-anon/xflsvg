@@ -127,7 +127,7 @@ class SvgRenderer(XflRenderer):
 
         fill_g, stroke_g, extra_defs, shape_box = svg
 
-        if self.mask_depth == 0:
+        if self.mask_depth == 0 and shape_box:
             self.bounding_points[-1].extend(
                 [
                     (shape_box[0], shape_box[1]),
@@ -340,3 +340,29 @@ def splitext(path):
         name, ext = filename.rsplit(".", maxsplit=1)
         return os.path.join(folder, name), f".{ext}"
     return path, ""
+
+def split_colors(color):
+    if not color:
+        return 0, 0, 0
+    if not color.startswith("#"):
+        raise Exception(f"invalid color: {color}")
+    
+    assert len(color) in (4, 5, 7, 9)
+    if len(color) <= 5:
+        r = int(color[1], 16)
+        g = int(color[2], 16)
+        b = int(color[3], 16)
+        if len(color) == 5:
+            a = int(color[4], 16)
+        else:
+            a = 15
+        return r*16+a, g*16+g, b*16+b, a*16+a
+    elif len(color) >=7:
+        r = int(color[1:3], 16)
+        g = int(color[3:5], 16)
+        b = int(color[5:7], 16)
+        if len(color) == 9:
+            a = int(color[7:9], 16)
+        return r, g, b, a
+    
+    assert False, f"invalid color spec: {color}"

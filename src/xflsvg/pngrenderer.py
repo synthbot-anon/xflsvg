@@ -2,24 +2,44 @@ import os
 from xml.etree import ElementTree
 
 from tqdm import tqdm
-from wand.image import Image
-from wand.color import Color
+from pyvips import Image
+from multiprocessing import Pool
 
-from .svgrenderer import SvgRenderer
+from .svgrenderer import SvgRenderer, split_colors
+
+
+def convert_to_png(args):
+
+    xml, bg = args
+    svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
+    im = pyvips.Image.new_from_buffer(svg, options='')
+
+    if bg[-1] != 0:
+        background = im.new_from_image(bg)
+        im = background.composite(im, "over")
+    
+    return im.write_to_buffer('.png')
+
+    # svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
+    # png = Image.new_from_buffer(svg, options='').write_to_buffer('.png')
+    # return png
 
 
 class PngRenderer(SvgRenderer):
-    def __init__(self, background="#0000"):
+    def __init__(self):
         super().__init__()
-        self.background = Color(background)
+        # self.background = Color(background)
 
-    def compile(self, output_filename=None, suffix=True, *args, **kwargs):
+    def compile(self, output_filename=None, suffix=True, background="#0000", *args, **kwargs):
         result = []
         xml_frames = super().compile(*args, **kwargs)
+        
+        bg = split_colors(background)
+        args = [(xml, bg) for xml in xml_frames]
+        with Pool(24) as p:
+            png_frames = p.map(convert_to_png, tqdm(args, 'rasterizing'))
 
-        for i, xml in tqdm(enumerate(xml_frames), desc="converting to png"):
-            svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            png = Image(blob=svg, background=self.background).make_blob("png")
+        for i, png in enumerate(png_frames):
             result.append(png)
 
             if output_filename:

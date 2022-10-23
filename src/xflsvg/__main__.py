@@ -100,11 +100,11 @@ def convert(
         output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
     elif output_type == ".png":
-        renderer = PngRenderer(background=background)
+        renderer = PngRenderer()
         output_path = f"{output_path}/{output_type}"
         output_folder = os.path.dirname(output_path)
     elif output_type == ".gif":
-        renderer = GifRenderer(background=background)
+        renderer = GifRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
         print('output path:', output_path)
@@ -152,6 +152,7 @@ def convert(
             reader=reader,
             padding=args.padding,
             scale=args.scale,
+            background=background,
             skip_leading_blanks=args.skip_leading_blanks,
         )
 
@@ -242,7 +243,7 @@ def main():
     parser.add_argument(
         "--background",
         type=str,
-        default="#00000000",
+        default="#0000",
         help="Use a background color for transparent pixels when converting to PNG or GIF. Default: #00000000.",
     )
     parser.add_argument(
