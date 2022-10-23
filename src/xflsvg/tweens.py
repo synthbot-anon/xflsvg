@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 import kd_tree
 import numpy
 from xfl2svg.shape.edge import EDGE_TOKENIZER, edge_format_to_point_lists
-from xfl2svg.shape.style import LinearGradient
+from xfl2svg.shape.style import LinearGradient, RadialGradient
 from xfl2svg.shape.gradient import interpolate_color
 
 from .util import ColorObject
@@ -35,14 +35,7 @@ def serialize_matrix(linear, translation):
         translation[1],
     ]
 
-
-def matrix_interpolation(start, end, n_frames, rotation, ease):
-    start_linear, start_translation = deserialize_matrix(start)
-    end_linear, end_translation = deserialize_matrix(end)
-
-    srot, sshear, sx, sy = adobe_decomposition(start_linear)
-    erot, eshear, ex, ey = adobe_decomposition(end_linear)
-
+def _adjust_adobe_matrix_params(rotation, srot, erot, sshear, eshear):
     if rotation > 0:
         if erot < srot:
             erot += 2 * math.p
@@ -55,6 +48,41 @@ def matrix_interpolation(start, end, n_frames, rotation, ease):
         srot += (erot - srot) / abs(erot - srot) * 2 * math.pi
     if abs(eshear - sshear) > math.pi:
         sshear += (eshear - sshear) / abs(eshear - sshear) * 2 * math.pi
+    
+    return srot, erot, sshear
+
+
+def simple_matrix_interpolation(start, end, t):
+    start_linear, start_translation = deserialize_matrix(start)
+    end_linear, end_translation = deserialize_matrix(end)
+
+    srot, sshear, sx, sy = adobe_decomposition(start_linear)
+    erot, eshear, ex, ey = adobe_decomposition(end_linear)
+    srot, erot, sshear = _adjust_adobe_matrix_params(0, srot, erot, sshear, eshear)
+
+    interpolated_linear = adobe_matrix(
+            t * (erot) + (1 - t) * srot,
+            t * eshear + (1 - t) * sshear,
+            t * ex + (1 - t) * sx,
+            t * ey + (1 - t) * sy,
+        )
+    interpolated_translation = (
+        t * end_translation + (1 - t) * start_translation
+    )
+
+    return serialize_matrix(interpolated_linear, interpolated_translation)
+
+
+
+    
+
+def matrix_interpolation(start, end, n_frames, rotation, ease):
+    start_linear, start_translation = deserialize_matrix(start)
+    end_linear, end_translation = deserialize_matrix(end)
+
+    srot, sshear, sx, sy = adobe_decomposition(start_linear)
+    erot, eshear, ex, ey = adobe_decomposition(end_linear)
+    srot, erot, sshear = _adjust_adobe_matrix_params(rotation, srot, erot, sshear, eshear)
     
     for i in range(n_frames):
         frot = ease["rotation"](i / (n_frames - 1)).y
@@ -163,6 +191,28 @@ class SolidColor:
         new_color, new_alpha = interpolate_color(x.color, x.alpha, y.color, y.alpha, frac)
         return SolidColor(new_color, new_alpha)
 
+def interpolate_radial_gradient(x, y, t):
+    new_matrix = simple_matrix_interpolation(x.matrix, y.matrix, t)
+    new_radius = math.sqrt(new_matrix[0]**2 + new_matrix[1]**2)
+    new_focal_point = (1 - t) * x.focal_point + t * y.focal_point
+
+    all_stops = set([p[0] for p in x.stops] + [p[0] for p in y.stops])
+    new_stops = []
+    for ratio in all_stops:
+        colx, ax = x.calculate_color(ratio)
+        coly, ay = y.calculate_color(ratio)
+        new_color, new_alpha = interpolate_color(colx, ax, coly, ay, t)
+        new_stops.append([ratio, new_color, new_alpha])
+    
+    new_stops = sorted(new_stops, key=lambda x: x[0])
+    prev_color = new_stops[0][1]
+    for stop in new_stops[1:]:
+        if stop[1] == None:
+            stop[1] = prev_color
+        prev_color = stop[1]
+    
+    new_stops = tuple(tuple(x) for x in new_stops)
+
 def get_color_map(xmlnode, name):
     result = {}
     for child in xmlnode.findChildren(name, recursive=False):
@@ -176,6 +226,7 @@ def get_color_map(xmlnode, name):
             color = LinearGradient.from_xfl(ET.fromstring(str(child.LinearGradient)))
         elif child.RadialGradient != None:
             assert False, "tweens.py cannot handle RadialGradients"
+            color = RadialGradient.from_xfl(ET.fromstring(str(child.RadialGradient)))
         else:
             warnings.warn(f"missing SolidColor/LinearGradient for a tween in {xmlnode}")
             color = SolidColor("#000000", 0)
@@ -210,11 +261,22 @@ def interpolate_color_map(container_tag, style_tag, start, end, i, duration, eas
                 interp_map[key] = LinearGradient.interpolate(scol, ecol, frac)
             elif type(ecol) == SolidColor:
                 interp_map[key] = scol.interpolate_color(ecol.color, ecol.alpha, frac)
+            else:
+                assert False, f"Cannot tween LinearGradient and {type(ecol)}"
         elif type(scol) == SolidColor:
             if type(ecol) == LinearGradient:
                 interp_map[key] = ecol.interpolate_color(scol.color, scol.alpha, 1-frac)
             elif type(ecol) == SolidColor:
                 interp_map[key] = SolidColor.interpolate(scol, ecol, frac)
+            else:
+                assert False, f"Cannot tween SolidColor and {type(ecol)}"
+        elif type(scol) == RadialGradient:
+            if type(ecol) == LinearGradient:
+                pass
+            elif type(ecol) == SolidColor:
+                pass
+            elif type(ecol) == RadialGradient:
+                interp_map[key] = RadialGradient.interpolate(scol, ecol, frac)
 
     result_lines = []
     for child in list(start.findChildren(style_tag, recursive=False)):
