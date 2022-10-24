@@ -153,6 +153,7 @@ def convert(
             padding=args.padding,
             scale=args.scale,
             background=background,
+            framerate=args.framerate,
             skip_leading_blanks=args.skip_leading_blanks,
         )
 
@@ -255,6 +256,11 @@ def main():
         "--skip-leading-blanks",
         action="store_true",
         default=False,
+    )
+    parser.add_argument(
+        "--framerate",
+        type=float,
+        default=24,
     )
 
     args = parser.parse_args()

@@ -2,7 +2,7 @@ import os
 from xml.etree import ElementTree
 
 from tqdm import tqdm
-from pyvips import Image
+import pyvips
 from multiprocessing import Pool
 
 from .svgrenderer import SvgRenderer, split_colors

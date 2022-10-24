@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from logging import warning
@@ -191,27 +192,81 @@ class SolidColor:
         new_color, new_alpha = interpolate_color(x.color, x.alpha, y.color, y.alpha, frac)
         return SolidColor(new_color, new_alpha)
 
+def calculate_stop_paths(init, fin):
+    # Goal: map all start point to their nearest end point and all end points to their
+    # nearest start points, then return the mappings as the target path.
+
+    available_starts = kd_tree.KDTree([(x[0],) for x in init], 1)
+    available_ends = kd_tree.KDTree([(x[0],) for x in fin], 1)
+
+    init_map = dict((x[0], x) for x in init)
+    fin_map = dict((x[0], x) for x in fin)
+
+    forward_map = defaultdict(list)
+    cover_count = defaultdict(lambda: 0)
+    
+    # Map each start point to its nearest ending point
+    for stop in init:
+        ratio = stop[0]
+        match = available_ends.get_nearest((ratio,), False)[0]
+
+        # add a path ratio -> match
+        forward_map[ratio].append(match)
+        cover_count[match] += 1
+        
+    # Map each unused end point to its nearest starting point
+    for stop in fin:
+        ratio = stop[0]
+        if cover_count[ratio] > 0:
+            continue
+        match = available_starts.get_nearest((ratio,), False)[0]
+
+        # If this point is covering another redundantly, prefer to remap it
+        # rather than double-mapping it
+        if forward_map[match]:
+            potential_redundancy = forward_map[match][0]
+            if cover_count[potential_redundancy] > 1:
+                forward_map[match].remove(potential_redundancy)
+                cover_count[potential_redundancy] -= 1
+        
+        forward_map[match].append(ratio)
+    
+    for start in sorted(forward_map):
+        for end in forward_map[start]:
+            yield init_map[start], fin_map[end]
+
+def interpolate_stops(start, end, t):
+    ratio = t * end[0] + (1-t) * start[0]
+    color, alpha = interpolate_color(start[1], start[2], end[1], end[2], t)
+    return (ratio, color, alpha)
+
 def interpolate_radial_gradient(x, y, t):
     new_matrix = simple_matrix_interpolation(x.matrix, y.matrix, t)
-    new_radius = math.sqrt(new_matrix[0]**2 + new_matrix[1]**2)
+    new_radius = (1 - t) * x.radius + t * y.radius
     new_focal_point = (1 - t) * x.focal_point + t * y.focal_point
+    new_stops = (interpolate_stops(a, b, t) for a,b in calculate_stop_paths(x.stops, y.stops))
+    return RadialGradient(new_matrix, new_radius, new_focal_point, tuple(new_stops), x.spread_method)
 
-    all_stops = set([p[0] for p in x.stops] + [p[0] for p in y.stops])
-    new_stops = []
-    for ratio in all_stops:
-        colx, ax = x.calculate_color(ratio)
-        coly, ay = y.calculate_color(ratio)
-        new_color, new_alpha = interpolate_color(colx, ax, coly, ay, t)
-        new_stops.append([ratio, new_color, new_alpha])
-    
-    new_stops = sorted(new_stops, key=lambda x: x[0])
-    prev_color = new_stops[0][1]
-    for stop in new_stops[1:]:
-        if stop[1] == None:
-            stop[1] = prev_color
-        prev_color = stop[1]
-    
-    new_stops = tuple(tuple(x) for x in new_stops)
+def interpolate_linear_gradients(x, y, t):
+    xvec = (x.end[0]-x.start[0], x.end[1]-x.start[1])
+    yvec = (y.end[0]-y.start[0], y.end[1]-y.start[1])
+
+    xrot = math.atan2(xvec[1], xvec[0])
+    yrot = math.atan2(yvec[1], yvec[0])
+    xdist = math.sqrt(xvec[0]**2 + xvec[1]**2)
+    ydist = math.sqrt(yvec[0]**2 + yvec[1]**2)
+    xmid = (x.start[0]+xvec[0]/2, x.start[1]+xvec[1]/2)
+    ymid = (y.start[0]+yvec[0]/2, y.start[1]+yvec[1]/2)
+
+    rot = (1 - t) * xrot + t * yrot
+    mid0 = (1 - t) * xmid[0] + t * ymid[0]
+    mid1 = (1 - t) * xmid[1] + t * ymid[1]
+    dist = (1 - t) * xdist + t * ydist
+
+    new_start = (-math.cos(rot)*dist/2 + mid0, -math.sin(rot)*dist/2 + mid1)
+    new_end = (math.cos(rot)*dist/2 + mid0, math.sin(rot)*dist/2 + mid1)
+    new_stops = (interpolate_stops(a, b, t) for a,b in calculate_stop_paths(x.stops, y.stops))
+    return LinearGradient(new_start, new_end, tuple(new_stops), x.spread_method)
 
 def get_color_map(xmlnode, name):
     result = {}
@@ -225,7 +280,6 @@ def get_color_map(xmlnode, name):
         elif child.LinearGradient != None:
             color = LinearGradient.from_xfl(ET.fromstring(str(child.LinearGradient)))
         elif child.RadialGradient != None:
-            assert False, "tweens.py cannot handle RadialGradients"
             color = RadialGradient.from_xfl(ET.fromstring(str(child.RadialGradient)))
         else:
             warnings.warn(f"missing SolidColor/LinearGradient for a tween in {xmlnode}")
@@ -254,11 +308,11 @@ def interpolate_color_map(container_tag, style_tag, start, end, i, duration, eas
         ecol = end_map[key]
         
         frac = ease['color'](i / (duration - 1)).y
-        assert type(scol) in (SolidColor, LinearGradient), f"tweens can only interpolate SolidColor and LinearGradient, not {type(scol)}"
+        assert type(scol) in (SolidColor, LinearGradient, RadialGradient), f"tweens can only interpolate SolidColor/LinearGradient/RadialGradient, not {type(scol)}"
         
         if type(scol) == LinearGradient:
             if type(ecol) == LinearGradient:
-                interp_map[key] = LinearGradient.interpolate(scol, ecol, frac)
+                interp_map[key] = interpolate_linear_gradients(scol, ecol, frac)
             elif type(ecol) == SolidColor:
                 interp_map[key] = scol.interpolate_color(ecol.color, ecol.alpha, frac)
             else:
@@ -272,11 +326,11 @@ def interpolate_color_map(container_tag, style_tag, start, end, i, duration, eas
                 assert False, f"Cannot tween SolidColor and {type(ecol)}"
         elif type(scol) == RadialGradient:
             if type(ecol) == LinearGradient:
-                pass
+                assert False, "Cannot interpolate RadialGradient with LinearGradient"
             elif type(ecol) == SolidColor:
-                pass
+                assert False, "Cannot interpolate RadialGradient with SolidColor"
             elif type(ecol) == RadialGradient:
-                interp_map[key] = RadialGradient.interpolate(scol, ecol, frac)
+                interp_map[key] = interpolate_radial_gradient(scol, ecol, frac)
 
     result_lines = []
     for child in list(start.findChildren(style_tag, recursive=False)):
