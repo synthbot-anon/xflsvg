@@ -330,7 +330,7 @@ class DOMSymbolInstance(Element):
             frame_index = (self.first_frame + iteration) % loop_size
         else:
             raise Exception(f"Unknown loop type: {self.loop_type}")
-        
+
         result = _transformed_frame(
             self.target_asset[frame_index], self.matrix, self.color
         )
@@ -437,7 +437,7 @@ class DOMGroup(Element, FrameContext):
 
 
 def _get_eases(xmlnode):
-    acceleration = int(xmlnode.get('acceleration', 0))
+    acceleration = int(xmlnode.get("acceleration", 0))
     nop = easing.classicEase(acceleration)
 
     tweens = xmlnode.findChildren("tweens", recursive=False)
@@ -619,8 +619,8 @@ class DOMFrame(AnimationObject, FrameContext):
         self.eases = _get_eases(self.xmlnode)
 
         if self.tween_type == "motion":
-            rotation = float(self.xmlnode.get('motionTweenRotateTimes', 0))
-            if self.xmlnode.get('motionTweenRotate') == 'clockwise':
+            rotation = float(self.xmlnode.get("motionTweenRotateTimes", 0))
+            if self.xmlnode.get("motionTweenRotate") == "clockwise":
                 rotation *= -1
 
             start_element = list(
@@ -754,6 +754,7 @@ def _is_mask_empty(mask_frame):
             return False
     return True
 
+
 class Layer(AnimationObject):
     def __init__(self, xflsvg, asset: "Asset", id: str, index: int, xmlnode):
         super().__init__()
@@ -814,7 +815,14 @@ class Layer(AnimationObject):
 
 class Asset(AnimationObject):
     def __init__(
-        self, xflsvg, id: str, xmlnode, timeline=None, width=None, height=None, background=None
+        self,
+        xflsvg,
+        id: str,
+        xmlnode,
+        timeline=None,
+        width=None,
+        height=None,
+        background=None,
     ):
         super().__init__()
         self.xflsvg = xflsvg
@@ -952,7 +960,7 @@ class XflReader:
 
     def get_camera(self):
         return self.box
-    
+
     def get_background(self):
         return self.background
 

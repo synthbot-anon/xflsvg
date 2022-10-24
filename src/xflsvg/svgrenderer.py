@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 import numpy
 import xml.etree.ElementTree as ET
 
-from .tweens import get_color_map
 from .xflsvg import XflRenderer
 from xfl2svg.shape.shape import xfl_domshape_to_svg, dict_shape_to_svg
 
@@ -119,7 +118,7 @@ class SvgRenderer(XflRenderer):
             cache = self.shape_cache
         else:
             cache = self.mask_cache
-        
+
         svg = cache.get(shape_snapshot.identifier, None)
         if not svg:
             svg = shape_frame_to_svg(shape_snapshot, self.mask_depth != 0)
@@ -341,12 +340,13 @@ def splitext(path):
         return os.path.join(folder, name), f".{ext}"
     return path, ""
 
+
 def split_colors(color):
     if not color:
         return 0, 0, 0
     if not color.startswith("#"):
         raise Exception(f"invalid color: {color}")
-    
+
     assert len(color) in (4, 5, 7, 9)
     if len(color) <= 5:
         r = int(color[1], 16)
@@ -356,13 +356,13 @@ def split_colors(color):
             a = int(color[4], 16)
         else:
             a = 15
-        return r*16+a, g*16+g, b*16+b, a*16+a
-    elif len(color) >=7:
+        return r * 16 + a, g * 16 + g, b * 16 + b, a * 16 + a
+    elif len(color) >= 7:
         r = int(color[1:3], 16)
         g = int(color[3:5], 16)
         b = int(color[5:7], 16)
         if len(color) == 9:
             a = int(color[7:9], 16)
         return r, g, b, a
-    
+
     assert False, f"invalid color spec: {color}"

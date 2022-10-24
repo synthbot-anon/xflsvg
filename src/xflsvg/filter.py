@@ -15,6 +15,7 @@ def join_path(folder, file):
     else:
         return folder or file
 
+
 class AssetFilter:
     def __init__(self, args):
         self.relevant_asset_patterns = None
@@ -49,7 +50,9 @@ class AssetFilter:
 
         if args.isolate:
             isolate_list, asset_paths_by_fla = self._get_filtered_list(args.isolate)
-            assert asset_paths_by_fla != None, "--isolation param can only be a .asset or .samples"
+            assert (
+                asset_paths_by_fla != None
+            ), "--isolation param can only be a .asset or .samples"
 
             for fla, asset_paths in asset_paths_by_fla.items():
                 for asset, paths in asset_paths.items():
@@ -72,26 +75,26 @@ class AssetFilter:
 
     @classmethod
     def _get_filtered_list(cls, input) -> Set[Tuple[str, str]]:
-        if input.ext == '.samples':
+        if input.ext == ".samples":
             (
                 labels_by_asset,
                 assets_by_label,
                 asset_paths_by_fla,
             ) = SampleReader.load_samples(input.pathspec)
             relevant_assets = labels_by_asset.keys()
-        elif input.ext == '.asset':
+        elif input.ext == ".asset":
             relevant_assets = {(None, input.path)}
             assets_by_label = {}
             asset_paths_by_fla = {None: {input.path: [None]}}
-        elif input.ext == '.regex':
+        elif input.ext == ".regex":
             relevant_assets = {(None, re.compile(input.path))}
             assets_by_label = {}
             asset_paths_by_fla = None
 
         if not input.param:
             return relevant_assets, asset_paths_by_fla
-        
-        assert input.ext == '.samples', "You can't subset a .asset or .regex"
+
+        assert input.ext == ".samples", "You can't subset a .asset or .regex"
 
         result = set()
         label_filters = [x.strip() for x in input.param.split(",")]
@@ -105,16 +108,18 @@ class AssetFilter:
             return None
 
         result = {}
-        filtered_lists, self._output_paths_by_fla = self._get_filtered_list(InputFileSpec.from_spec(input.param))
+        filtered_lists, self._output_paths_by_fla = self._get_filtered_list(
+            InputFileSpec.from_spec(input.param)
+        )
 
         for fla, asset in filtered_lists:
             result.setdefault(fla, set()).add(asset)
 
         return result
-    
+
     def _get_isolated_tasks(self, input):
         if self.isolated_items_by_fla == None:
-            yield None, ''
+            yield None, ""
             return
 
         basename = os.path.basename(os.path.normpath(input.pathspec))
@@ -126,7 +131,9 @@ class AssetFilter:
                 yield isolated_item, os.path.join(dirname, new_fn)
 
         for isolated_item in self.isolated_items_by_fla.get(None, []):
-            new_fn = create_filename(input.path.rstrip(os.path.sep), isolated_item, None, None)
+            new_fn = create_filename(
+                input.path.rstrip(os.path.sep), isolated_item, None, None
+            )
             yield isolated_item, new_fn
 
     def get_tasks(self, input, output_path):
@@ -146,18 +153,16 @@ class AssetFilter:
             for asset, relpaths in self._output_paths_by_fla.get(None, {}).items():
                 for isolated_item, dest_path in self._get_isolated_tasks(input):
                     yield asset, join_path(output_path, dest_path), isolated_item
-            
-
 
     def _allow_asset(self, fla, asset):
         if self.relevant_asset_patterns == None:
             return True
-        
+
         found_match = False
         for pattern_fla, pattern in self.relevant_asset_patterns:
             if pattern_fla != fla and pattern_fla != None:
                 continue
-            
+
             if isinstance(pattern, str):
                 if asset == pattern:
                     found_match = True
@@ -166,7 +171,7 @@ class AssetFilter:
                 if pattern.match(asset):
                     found_match = True
                     break
-        
+
         return found_match == self.allow_relevant_assets
 
     def _wrap_push_transform(self, push_transform):
@@ -221,7 +226,9 @@ class AssetFilter:
 
     def _wrap_render_shape(self, render_shape):
         def _modified(frame, *args, **kwargs):
-            if (self._mask_depth > 0) or (self._in_isolated_item and self._render_allowed):
+            if (self._mask_depth > 0) or (
+                self._in_isolated_item and self._render_allowed
+            ):
                 render_shape(frame, *args, **kwargs)
 
         return _modified

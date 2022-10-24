@@ -12,13 +12,13 @@ def convert_to_png(args):
 
     xml, bg = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-    im = pyvips.Image.new_from_buffer(svg, options='')
+    im = pyvips.Image.new_from_buffer(svg, options="")
 
     if bg[-1] != 0:
         background = im.new_from_image(bg)
         im = background.composite(im, "over")
-    
-    return im.write_to_buffer('.png')
+
+    return im.write_to_buffer(".png")
 
     # svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
     # png = Image.new_from_buffer(svg, options='').write_to_buffer('.png')
@@ -30,14 +30,16 @@ class PngRenderer(SvgRenderer):
         super().__init__()
         # self.background = Color(background)
 
-    def compile(self, output_filename=None, suffix=True, background="#0000", *args, **kwargs):
+    def compile(
+        self, output_filename=None, suffix=True, background="#0000", *args, **kwargs
+    ):
         result = []
         xml_frames = super().compile(*args, **kwargs)
-        
+
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
         with Pool(24) as p:
-            png_frames = p.map(convert_to_png, tqdm(args, 'rasterizing'))
+            png_frames = p.map(convert_to_png, tqdm(args, "rasterizing"))
 
         for i, png in enumerate(png_frames):
             result.append(png)

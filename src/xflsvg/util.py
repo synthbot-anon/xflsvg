@@ -81,6 +81,7 @@ def get_matching_path(input_root, output_root, input_path):
     relpath = os.path.relpath(input_path, input_root)
     return os.path.join(output_root, relpath)
 
+
 @dataclass(frozen=True)
 class InputFileSpec:
     path: str

@@ -88,11 +88,9 @@ def convert(
         raise Exception(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
-    
+
     background = (
-        args.background
-        or (args.use_document_attrs and reader.get_background())
-        or None
+        args.background or (args.use_document_attrs and reader.get_background()) or None
     )
 
     if output_type == ".svg":
@@ -107,7 +105,7 @@ def convert(
         renderer = GifRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
-        print('output path:', output_path)
+        print("output path:", output_path)
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
@@ -130,7 +128,7 @@ def convert(
 
     logging.basicConfig(
         filename=os.path.join(output_folder, "logs.txt"),
-        level=logging.DEBUG,
+        level=logging.WARNING,
         force=True,
     )
     logging.captureWarnings(True)
