@@ -89,9 +89,15 @@ def convert(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
         )
 
-    background = (
-        args.background or (args.use_document_attrs and reader.get_background()) or None
-    )
+    if args.background:
+        background = args.background
+    elif args.use_document_attrs:
+        background = reader.get_background()
+        print("getting from reader")
+    else:
+        background = None
+
+    print("background:", background)
 
     if output_type == ".svg":
         renderer = SvgRenderer()
@@ -242,8 +248,7 @@ def main():
     parser.add_argument(
         "--background",
         type=str,
-        default="#0000",
-        help="Use a background color for transparent pixels when converting to PNG or GIF. Default: #00000000.",
+        help="Use a background color for transparent pixels when converting to PNG or GIF. Default: #0000.",
     )
     parser.add_argument(
         "--no-stills",

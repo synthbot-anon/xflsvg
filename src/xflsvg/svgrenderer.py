@@ -116,8 +116,10 @@ class SvgRenderer(XflRenderer):
     def render_shape(self, shape_snapshot, *args, **kwargs):
         if self.mask_depth == 0:
             cache = self.shape_cache
+            id = f"MShape{shape_snapshot.identifier}"
         else:
             cache = self.mask_cache
+            id = f"Shape{shape_snapshot.identifier}"
 
         svg = cache.get(shape_snapshot.identifier, None)
         if not svg:
@@ -138,7 +140,6 @@ class SvgRenderer(XflRenderer):
             self.shape_counts[-1] += 1
 
         self.defs.update(extra_defs)
-        id = f"Shape{shape_snapshot.identifier}"
 
         if fill_g is not None:
             fill_id = f"{id}_FILL"
@@ -363,6 +364,8 @@ def split_colors(color):
         b = int(color[5:7], 16)
         if len(color) == 9:
             a = int(color[7:9], 16)
+        else:
+            a = 255
         return r, g, b, a
 
     assert False, f"invalid color spec: {color}"

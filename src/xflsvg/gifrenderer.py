@@ -16,9 +16,8 @@ def convert_to_rgba(args):
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
     im = pyvips.Image.new_from_buffer(svg, options="")
 
-    if bg[-1] != 0:
-        background = im.new_from_image(bg)
-        im = background.composite(im, "over")
+    background = im.new_from_image(bg)
+    im = background.composite(im, "over")
 
     png = BytesIO(im.pngsave_buffer(compression=0))
     im = Image.open(png)
@@ -34,13 +33,10 @@ class GifRenderer(SvgRenderer):
         self, output_filename, framerate=24, background="#0000", *args, **kwargs
     ):
         result = []
-        # width, height = map(round, self.get_frame_dimensions())
         xml_frames = super().compile(*args, **kwargs)
 
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
-        # with Pool(1) as p:
-        # rgba_frames = p.map(convert_to_rgba, tqdm(args, 'rasterizing'))
         rgba_frames = map(convert_to_rgba, tqdm(args, "rasterizing"))
 
         rgba_frames = list(rgba_frames)
