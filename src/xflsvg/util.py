@@ -207,22 +207,35 @@ class OutputFileSpec:
 
 def pool(threads):
     threads = int(threads)
-    if threads == -1:
-        threads = multiprocessing.cpu_count
-
-    if threads > 1:
-        return lambda: multiprocessing.Pool(threads)
+    if threads < 1:
+        threads = None
 
     @contextmanager
     def _pool():
-        yield SingleThreadedMapper()
+        try:
+            with multiprocessing.Pool(threads) as pool:
+                yield Mapper(pool)
+        finally:
+            pass
 
     return _pool
 
 
-class SingleThreadedMapper:
+class Mapper:
+    def __init__(self, pool):
+        self.pool = pool
+
     def map(self, fn, args):
-        return map(fn, args)
+        original_pids = set([x.pid for x in self.pool._pool])
+        future = self.pool.map_async(fn, args)
+        while True:
+            try:
+                result = future.get(0.1)
+                return result
+            except multiprocessing.TimeoutError:
+                current_pids = set([x.pid for x in self.pool._pool])
+                if current_pids - original_pids:
+                    raise ChildProcessError()
 
 
 def merge_bounding_boxes(original, addition):

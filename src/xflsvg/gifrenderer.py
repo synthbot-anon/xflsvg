@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 from xml.etree import ElementTree
 
@@ -6,12 +7,15 @@ from gifski import Gifski
 from tqdm import tqdm
 from PIL import Image
 import pyvips
-from multiprocessing import Pool
+import wand.image
+import wand.color
+from multiprocessing import Pool, current_process
+import dask
 
 from .svgrenderer import SvgRenderer, split_colors
 
 
-def convert_to_rgba(args):
+def vips_convert_to_rgba(args):
     xml, bg = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
     im = pyvips.Image.new_from_buffer(svg, options="")
@@ -22,6 +26,16 @@ def convert_to_rgba(args):
     png = BytesIO(im.pngsave_buffer(compression=0))
     im = Image.open(png)
     return im.tobytes(), im.width, im.height
+
+
+def wand_convert_to_rgba(args):
+    xml, bg, width, height = args
+    svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
+
+    background = wand.color.Color(bg)
+    im = wand.image.Image(blob=svg, background=background, width=width, height=height)
+
+    return im.make_blob("RGBA"), im.width, im.height
 
 
 class GifRenderer(SvgRenderer):
@@ -40,11 +54,22 @@ class GifRenderer(SvgRenderer):
         result = []
         xml_frames = super().compile(*args, **kwargs)
 
-        bg = split_colors(background)
-        args = [(xml, bg) for xml in xml_frames]
+        try:
+            bg = split_colors(background)
+            args = [(xml, bg) for xml in xml_frames]
+            with pool() as p:
+                rgba_frames = p.map(vips_convert_to_rgba, tqdm(args, "rasterizing"))
 
-        with pool() as p:
-            rgba_frames = p.map(convert_to_rgba, tqdm(args, "rasterizing"))
+        except ChildProcessError:
+            print("failed to rasterize with vips... trying again with wand")
+            first_frame = wand_convert_to_rgba((xml_frames[0], background, None, None))
+            _, width, height = first_frame
+
+            args = [(xml, background, width, height) for xml in xml_frames[1:]]
+            with pool() as p:
+                other_frames = p.map(wand_convert_to_rgba, tqdm(args, "rasterizing"))
+
+            rgba_frames = [first_frame, *other_frames]
 
         rgba_frames = list(rgba_frames)
         _, width, height = rgba_frames[0]

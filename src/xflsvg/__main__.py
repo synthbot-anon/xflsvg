@@ -5,6 +5,7 @@ from glob import glob
 import hashlib
 import json
 import logging
+import multiprocessing
 import os
 import re
 import traceback
@@ -20,12 +21,8 @@ from .util import pool, splitext, get_matching_path, InputFileSpec, OutputFileSp
 from .xflsvg import XflReader
 
 
-# known buggy files: MLP509_414 (tween), MLP422_593 and MLP509_056 (shape), MLP509_275 (stroke id)
-# ... MLP214_079 (missing shapes), MLP214_107 (rarity's hoof), MLP422_027 (when isolating Twilight,
-# ... there's one behind the background)
-# known missing stuff: LinearGradient for strokes
-# head roll (loop issue): f-MLP214__138.xfl_s-fafa_tRD_sCharacter.sym.gif
-# flashing leg: f-MLP214__390.xfl_s-_tPP_sCharacter.sym.gif
+# known buggy files:
+# ... MLP624_239:
 
 
 def as_number(data):
@@ -272,6 +269,7 @@ def main():
     )
 
     args = parser.parse_args()
+    multiprocessing.set_start_method("spawn")
     filter = AssetFilter(args)
 
     assert args.input.ext in (

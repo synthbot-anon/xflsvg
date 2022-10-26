@@ -697,8 +697,6 @@ class DOMFrame(AnimationObject, FrameContext):
         spoint = _center_point(sshapes, mask)
         epoint = _center_point(eshapes, mask)
 
-        print("tweening", spoint, "->", epoint)
-
         if spoint and epoint:
             for start in sshapes:
                 end_matrix = list(start.matrix or [1, 0, 0, 1, 0, 0])
