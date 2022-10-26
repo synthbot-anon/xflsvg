@@ -27,17 +27,24 @@ def convert_to_rgba(args):
 class GifRenderer(SvgRenderer):
     def __init__(self):
         super().__init__()
-        # self.background = Color(background)
 
     def compile(
-        self, output_filename, framerate=24, background="#0000", *args, **kwargs
+        self,
+        output_filename,
+        framerate=24,
+        background="#0000",
+        pool=None,
+        *args,
+        **kwargs,
     ):
         result = []
         xml_frames = super().compile(*args, **kwargs)
 
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
-        rgba_frames = map(convert_to_rgba, tqdm(args, "rasterizing"))
+
+        with pool() as p:
+            rgba_frames = p.map(convert_to_rgba, tqdm(args, "rasterizing"))
 
         rgba_frames = list(rgba_frames)
         _, width, height = rgba_frames[0]
@@ -46,10 +53,6 @@ class GifRenderer(SvgRenderer):
         timestamp = 0
 
         for rgba, width, height in tqdm(rgba_frames, desc="creating gif"):
-            # svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-            # image = Image(
-            # blob=svg, background=self.background, width=width, height=height
-            # )
             g.add_frame_rgba(rgba, timestamp)
             timestamp += 1 / framerate
 

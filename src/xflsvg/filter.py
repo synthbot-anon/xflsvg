@@ -20,23 +20,24 @@ class AssetFilter:
     def __init__(self, args):
         self.relevant_asset_patterns = None
         self.allow_relevant_assets = None
-        self._allowed_tasks_by_path = None
-        self._output_paths_by_fla = {}
+        self._available_timelines = None
+        self._dest_paths_by_fla = {}
         self._file_context = []
         self._switch_on_frame = None
         self._mask_depth = 0
 
+        # Figure out which pieces to keep/remove within a render
         assert (not args.discard) or (
             not args.retain
         ), "You can't specify both --retain and --discard."
         if args.discard:
-            discard_list, asset_paths_by_fla = self._get_filtered_list(args.discard)
+            discard_list, fla_asset_relpaths = self._get_filtered_list(args.discard)
             self.relevant_asset_patterns = discard_list
             self.allow_relevant_assets = False
             self._default_render = True
             self._render_allowed = True
         elif args.retain:
-            retain_list, asset_paths_by_fla = self._get_filtered_list(args.retain)
+            retain_list, fla_asset_relpaths = self._get_filtered_list(args.retain)
             self.relevant_asset_patterns = retain_list
             self.allow_relevant_assets = True
             self.allow_asset_fn = lambda x: x in retain_list
@@ -46,22 +47,23 @@ class AssetFilter:
             self._render_allowed = True
             self._default_render = True
 
-        self._allowed_tasks_by_path = self._parse_allowed_tasks(args.input)
+        # Figure out what to render from which files
+        self._available_timelines, self._fla_asset_destpath = self._get_timelines(
+            args.input
+        )
 
         if args.isolate:
-            isolate_list, asset_paths_by_fla = self._get_filtered_list(args.isolate)
+            isolate_list, self._fla_asset_destpath = self._get_filtered_list(
+                args.isolate
+            )
             assert (
-                asset_paths_by_fla != None
-            ), "--isolation param can only be a .asset or .samples"
+                self._fla_asset_destpath != None
+            ), "--isolate param can only be an .asset or .samples"
 
-            for fla, asset_paths in asset_paths_by_fla.items():
-                for asset, paths in asset_paths.items():
-                    self._output_paths_by_fla.setdefault(fla, {}).setdefault(
-                        asset, set()
-                    ).update(paths)
             self.isolated_items_by_fla = defaultdict(list)
             for fla, asset in isolate_list:
                 self.isolated_items_by_fla[fla].append(asset)
+
             self._has_isolated_task = False
             self._in_isolated_item = False
             self._finish_on_frame = None
@@ -79,20 +81,20 @@ class AssetFilter:
             (
                 labels_by_asset,
                 assets_by_label,
-                asset_paths_by_fla,
+                fla_asset_relpaths,
             ) = SampleReader.load_samples(input.pathspec)
             relevant_assets = labels_by_asset.keys()
         elif input.ext == ".asset":
             relevant_assets = {(None, input.path)}
             assets_by_label = {}
-            asset_paths_by_fla = {None: {input.path: [None]}}
+            fla_asset_relpaths = {None: {input.path: [None]}}
         elif input.ext == ".regex":
             relevant_assets = {(None, re.compile(input.path))}
             assets_by_label = {}
-            asset_paths_by_fla = None
+            fla_asset_relpaths = None
 
         if not input.param:
-            return relevant_assets, asset_paths_by_fla
+            return relevant_assets, fla_asset_relpaths
 
         assert input.ext == ".samples", "You can't subset a .asset or .regex"
 
@@ -101,58 +103,67 @@ class AssetFilter:
         for label in label_filters:
             result.update(assets_by_label[label])
 
-        return result, asset_paths_by_fla
+        return result, fla_asset_relpaths
 
-    def _parse_allowed_tasks(self, input):
+    def _get_timelines(self, input):
         if not input.param:
-            return None
+            fla = os.path.basename(input.path.rstrip("/"))
+            name, ext = splitext(fla)
+            return {None: set([None])}, name
 
-        result = {}
-        filtered_lists, self._output_paths_by_fla = self._get_filtered_list(
+        filtered_lists, fla_asset_path = self._get_filtered_list(
             InputFileSpec.from_spec(input.param)
         )
 
+        timelines = {}
         for fla, asset in filtered_lists:
-            result.setdefault(fla, set()).add(asset)
+            timelines.setdefault(fla, set()).add(asset)
 
-        return result
+        return timelines, fla_asset_path
 
-    def _get_isolated_tasks(self, input):
+    def _get_fla_isolated_tasks(self, input):
+        basename = os.path.basename(os.path.normpath(input.pathspec))
+        fla = splitext(basename)[0]
+
         if self.isolated_items_by_fla == None:
-            yield None, ""
+            yield None, None
             return
 
-        basename = os.path.basename(os.path.normpath(input.pathspec))
-
-        for isolated_item in self.isolated_items_by_fla.get(basename, []):
-            for relpath in self._output_paths_by_fla[basename][isolated_item]:
+        for isolated_item in self.isolated_items_by_fla.get(fla, []):
+            for relpath in self._fla_asset_destpath[fla][isolated_item]:
                 dirname = os.path.dirname(relpath)
-                new_fn = create_filename(basename, isolated_item, None, None)
+                new_fn = create_filename(fla, isolated_item, None, None)
                 yield isolated_item, os.path.join(dirname, new_fn)
 
         for isolated_item in self.isolated_items_by_fla.get(None, []):
-            new_fn = create_filename(
-                input.path.rstrip(os.path.sep), isolated_item, None, None
-            )
+            new_fn = create_filename(fla, isolated_item, None, None)
             yield isolated_item, new_fn
 
-    def get_tasks(self, input, output_path):
-        basename = os.path.basename(os.path.normpath(input.pathspec))
+    def get_tasks(self, input, output, batch=False):
+        basename = os.path.basename(os.path.normpath(input.path.rstrip("/")))
 
-        if self._allowed_tasks_by_path == None:
-            # Render the main timeline
-            for isolated_item, dest_path in self._get_isolated_tasks(input):
-                yield None, join_path(output_path, dest_path), isolated_item
+        timelines = set()
+        timelines.update(self._available_timelines.get(basename, []))
+        timelines.update(self._available_timelines.get(None, []))
 
-        else:
-            # Render the specified asset timelines
-            for asset, relpaths in self._output_paths_by_fla.get(basename, {}).items():
-                for isolated_item, dest_path in self._get_isolated_tasks(input):
-                    yield asset, join_path(output_path, dest_path), isolated_item
+        for timeline in timelines:
+            for isolated_item, relpath in self._get_fla_isolated_tasks(input):
+                if relpath:
+                    dest_path = os.path.join(output.path, relpath)
+                elif timeline:
+                    if batch:
+                        dest_path = os.path.join(
+                            output.matching_descendent(input).path, timeline
+                        )
+                    else:
+                        dest_path = os.path.join(output.path, timeline)
+                else:
+                    if batch:
+                        dest_path = output.matching_descendent(input).path
+                    else:
+                        dest_path = output.path
 
-            for asset, relpaths in self._output_paths_by_fla.get(None, {}).items():
-                for isolated_item, dest_path in self._get_isolated_tasks(input):
-                    yield asset, join_path(output_path, dest_path), isolated_item
+                yield timeline, dest_path, isolated_item
 
     def _allow_asset(self, fla, asset):
         if self.relevant_asset_patterns == None:

@@ -16,7 +16,7 @@ from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
 from .samplerenderer import SampleReader, SampleRenderer
-from .util import splitext, get_matching_path, InputFileSpec, OutputFileSpec
+from .util import pool, splitext, get_matching_path, InputFileSpec, OutputFileSpec
 from .xflsvg import XflReader
 
 
@@ -34,7 +34,7 @@ def as_number(data):
 
 
 def should_process(data, args):
-    return (as_number(data) - args.id) % args.par == 0
+    return (as_number(data) - args.id) % args.poolsize == 0
 
 
 def output_completed(output_path):
@@ -97,8 +97,6 @@ def convert(
     else:
         background = None
 
-    print("background:", background)
-
     if output_type == ".svg":
         renderer = SvgRenderer()
         output_path = f"{output_path}/{output_type}"
@@ -159,6 +157,7 @@ def convert(
             background=background,
             framerate=args.framerate,
             skip_leading_blanks=args.skip_leading_blanks,
+            pool=args.threads,
         )
 
         unlock_output(output_path)
@@ -198,7 +197,7 @@ def main():
         help="""Recursively process all files in a folder to generate the target type. If used, any option suffix (.xfl, .svg) is stripped off the input and output arguments, and the results are treated as folders that should contain inputs and outputs. Example to process XFL files in /input/root/ and write the resulting SVG files to /output/root/: seq 24 | xargs -L1 -P24 python -m xflsvg /input/root.xfl /output/root.svg --batch --use-camera --par 24 --id""",
     )
     parser.add_argument(
-        "--par",
+        "--poolsize",
         type=int,
         required=False,
         default=1,
@@ -248,6 +247,7 @@ def main():
     parser.add_argument(
         "--background",
         type=str,
+        default="#0000",
         help="Use a background color for transparent pixels when converting to PNG or GIF. Default: #0000.",
     )
     parser.add_argument(
@@ -264,6 +264,11 @@ def main():
         "--framerate",
         type=float,
         default=24,
+    )
+    parser.add_argument(
+        "--threads",
+        type=pool,
+        default=pool(1),
     )
 
     args = parser.parse_args()
@@ -283,7 +288,7 @@ def main():
 
     if not args.batch:
         for input_asset, output_path, isolated_item in filter.get_tasks(
-            args.input, args.output.path
+            args.input, args.output, args.batch
         ):
             print(
                 "processing:",
@@ -316,9 +321,9 @@ def main():
             if not should_process(input.relpath, args):
                 continue
 
-            output_location = args.output.matching_descendent(input)
+            # output_location = args.output.matching_descendent(input)
             for input_asset, output_path, isolated_item in filter.get_tasks(
-                input, output_location.path
+                input, args.output, args.batch
             ):
                 print(
                     "processing:",

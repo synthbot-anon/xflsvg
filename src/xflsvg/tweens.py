@@ -353,37 +353,37 @@ def interpolate_color_maps(start_shape, end_shape, i, duration, ease):
     if start_shape.strokes:
         new_strokes = BeautifulSoup(str(start_shape.strokes), "xml")
 
-        # Collect strokes
-        end_fills = defaultdict(lambda: None)
-        for stroke_style in end_shape.strokes.findChildren("StrokeStyle"):
-            index = int(stroke_style.get("index"))
-            # TODO: tween stroke weight and VariablePointWidth elements
-            end_fills[index] = get_fill_def(stroke_style)
+        if end_shape.strokes:
+            end_fills = defaultdict(lambda: None)
+            for stroke_style in end_shape.strokes.findChildren("StrokeStyle"):
+                index = int(stroke_style.get("index"))
+                # TODO: tween stroke weight and VariablePointWidth elements
+                end_fills[index] = get_fill_def(stroke_style)
 
-        for stroke_style in new_strokes.findChildren("StrokeStyle"):
-            index = int(stroke_style.get("index"))
-            start_fill = get_fill_def(stroke_style)
-            interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
-            replace_fill(stroke_style, start_fill, interpolated)
+            for stroke_style in new_strokes.findChildren("StrokeStyle"):
+                index = int(stroke_style.get("index"))
+                start_fill = get_fill_def(stroke_style)
+                interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
+                replace_fill(stroke_style, start_fill, interpolated)
 
         new_strokes = str(next(new_strokes.children))
 
-    if start_shape.fills:
+    if start_shape.fills and end_shape.fills:
         new_fills = BeautifulSoup(str(start_shape.fills), "xml")
 
-        # Collect fills
-        end_fills = defaultdict(lambda: None)
-        for fill_style in end_shape.fills.findChildren("FillStyle"):
-            index = int(fill_style.get("index"))
-            end_fills[index] = get_fill_def(fill_style)
+        if end_shape.fills:
+            end_fills = defaultdict(lambda: None)
+            for fill_style in end_shape.fills.findChildren("FillStyle"):
+                index = int(fill_style.get("index"))
+                end_fills[index] = get_fill_def(fill_style)
 
-        for fill_style in new_fills.findChildren("FillStyle"):
-            index = int(fill_style.get("index"))
-            start_fill = get_fill_def(fill_style)
-            interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
-            replace_fill(fill_style, start_fill, interpolated)
+            for fill_style in new_fills.findChildren("FillStyle"):
+                index = int(fill_style.get("index"))
+                start_fill = get_fill_def(fill_style)
+                interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
+                replace_fill(fill_style, start_fill, interpolated)
 
-        new_fills = str(next(new_fills.children))
+            new_fills = str(next(new_fills.children))
 
     return new_strokes, new_fills
 

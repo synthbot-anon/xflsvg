@@ -16,7 +16,7 @@ _EXPLICIT_FLA = re.compile(r"f-(.*)\.(fla|xfl)", re.IGNORECASE)
 _IMPLICIT_FLA = re.compile(r"(.*)\.(fla|xfl)", re.IGNORECASE)
 
 _EXPLICIT_SYM = re.compile(r"s-(.*)\.sym", re.IGNORECASE)
-_IMPLICIT_SYM = re.compile(r"(.*_f[0-9]{0,4})\.(png|svg)", re.IGNORECASE)
+_IMPLICIT_SYM = re.compile(r"(.*_f[0-9]{0,4})\.(png|svg|gif)", re.IGNORECASE)
 
 _EXPLICIT_SHAPE = re.compile(r"d-(.*)\.shape", re.IGNORECASE)
 
@@ -89,10 +89,6 @@ def extract_symbol_name(full_path):
         matches = _EXPLICIT_SYM.search(file_part)
         if matches:
             return filename_to_id(matches.group(1))
-    # for file_part in full_path.split(os.sep)[::-1]:
-    #     matches = _IMPLICIT_SYM.search(file_part)
-    #     if matches:
-    #         return filename_to_id(matches.group(1))
     return None
 
 

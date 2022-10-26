@@ -25,14 +25,22 @@ class PngRenderer(SvgRenderer):
         super().__init__()
 
     def compile(
-        self, output_filename=None, suffix=True, background="#0000", *args, **kwargs
+        self,
+        output_filename=None,
+        suffix=True,
+        background="#0000",
+        pool=None,
+        *args,
+        **kwargs,
     ):
         result = []
         xml_frames = super().compile(*args, **kwargs)
 
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
-        png_frames = map(convert_to_png, tqdm(args, "rasterizing"))
+
+        with pool() as p:
+            png_frames = p.map(convert_to_png, tqdm(args, "rasterizing"))
 
         for i, png in enumerate(png_frames):
             result.append(png)

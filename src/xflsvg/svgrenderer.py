@@ -6,77 +6,17 @@ from bs4 import BeautifulSoup
 import numpy
 import xml.etree.ElementTree as ET
 
+from .boundingbox import (
+    merge_bounding_boxes,
+    expand_bounding_box,
+    paths_to_bounding_box,
+)
 from .xflsvg import XflRenderer
 from xfl2svg.shape.shape import xfl_domshape_to_svg, dict_shape_to_svg
 
 
 _EMPTY_SVG = '<svg height="1px" width="1px" viewBox="0 0 1 1" />'
 _IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0]
-
-
-def color_to_svg_filter(color):
-    # fmt: off
-    matrix = (
-        "{0} 0 0 0 {4} "
-        "0 {1} 0 0 {5} "
-        "0 0 {2} 0 {6} "
-        "0 0 0 {3} {7}"
-    ).format(
-        color.mr, color.mg, color.mb, color.ma,
-        color.dr, color.dg, color.db, color.da,
-    )
-    # fmt: on
-
-    filter = ET.Element(
-        "filter",
-        {
-            "id": color.id,
-            "x": "-20%",
-            "y": "-20%",
-            "width": "140%",
-            "height": "140%",
-            "color-interpolation-filters": "sRGB",
-        },
-    )
-
-    ET.SubElement(
-        filter,
-        "feColorMatrix",
-        {
-            "in": "SourceGraphic",
-            "type": "matrix",
-            "values": matrix,
-        },
-    )
-
-    return filter
-
-
-def merge_bounding_boxes(original, addition):
-    if addition == None:
-        return original
-
-    if original == None:
-        return addition
-
-    return (
-        min(original[0], addition[0]),
-        min(original[1], addition[1]),
-        max(original[2], addition[2]),
-        max(original[3], addition[3]),
-    )
-
-
-def expand_bounding_box(original, pt):
-    if original == None:
-        return (*pt, *pt)
-
-    return (
-        min(original[0], pt[0]),
-        min(original[1], pt[1]),
-        max(original[2], pt[0]),
-        max(original[3], pt[1]),
-    )
 
 
 def shape_frame_to_svg(shape_frame, mask):
@@ -100,8 +40,10 @@ class SvgRenderer(XflRenderer):
         ]
 
         self.mask_depth = 0
+        self.matrix = [_IDENTITY_MATRIX]
         self.shape_cache = {}
         self.mask_cache = {}
+        self.box_cache = {}
 
         self._captured_frames = []
         self.bounding_points = [[]]
@@ -125,8 +67,13 @@ class SvgRenderer(XflRenderer):
         if not svg:
             svg = shape_frame_to_svg(shape_snapshot, self.mask_depth != 0)
             cache[shape_snapshot.identifier] = svg
+        fill_g, stroke_g, extra_defs, shape_paths = svg
 
-        fill_g, stroke_g, extra_defs, shape_box = svg
+        # TODO: calculate the bounding box on every use using hardware acceleration
+        shape_box = self.box_cache.get(shape_snapshot.identifier, None)
+        if not shape_box:
+            shape_box = paths_to_bounding_box(shape_paths, _IDENTITY_MATRIX)
+            self.box_cache[shape_snapshot.identifier] = shape_box
 
         if self.mask_depth == 0 and shape_box:
             self.bounding_points[-1].extend(
@@ -162,6 +109,21 @@ class SvgRenderer(XflRenderer):
         self.context.append([])
         self.bounding_points.append([])
 
+        # TODO: calculate the bounding box on every use using hardware acceleration
+        # if transformed_snapshot.matrix == None:
+        #     self.matrix.append(self.matrix[-1])
+        #     return
+
+        # a, b, c, d, tx, ty = self.matrix[-1]
+        # old_matrix = numpy.array([[a, b, tx], [c, d, ty], [0, 0, 1]])
+        # a, c, b, d, tx, ty = transformed_snapshot.matrix
+        # m = numpy.array([[a, b, tx], [c, d, ty], [0, 0, 1]])
+        # new_matrix = old_matrix @ m
+        # r1, r2, r3 = new_matrix
+        # a, b, tx = r1
+        # c, d, ty = r2
+        # self.matrix.append([a, b, c, d, tx, ty])
+
     def pop_transform(self, transformed_snapshot, *args, **kwargs):
         transform_data = {}
         prev_bounds = self.bounding_points.pop()
@@ -173,18 +135,19 @@ class SvgRenderer(XflRenderer):
             matrix = " ".join([str(x) for x in transformed_snapshot.matrix])
             transform_data["transform"] = f"matrix({matrix})"
 
+            # TODO: calculate the bounding box on every use using hardware acceleration
             if prev_bounds:
-                a, b, c, d, tx, ty = [float(x) for x in transformed_snapshot.matrix]
+                a, b, c, d, tx, ty = transformed_snapshot.matrix
                 prev_bounds = numpy.array(prev_bounds)
                 mat = numpy.array([[a, b], [c, d]])
-                new_bounds = prev_bounds @ mat + [tx, ty]
+                new_bounds = (prev_bounds @ mat) + [tx, ty]
 
         self.bounding_points[-1].extend(new_bounds)
 
         if self.mask_depth == 0:
             color = transformed_snapshot.color
             if color and not color.is_identity():
-                filter_element = color_to_svg_filter(transformed_snapshot.color)
+                filter_element = color.to_svg()
                 self.defs[color.id] = filter_element
                 transform_data["filter"] = f"url(#{color.id})"
 
@@ -195,6 +158,9 @@ class SvgRenderer(XflRenderer):
         else:
             items = self.context.pop()
             self.context[-1].extend(items)
+
+        # TODO: calculate the bounding box on every use using hardware acceleration
+        # self.matrix.pop()
 
     def push_mask(self, masked_snapshot, *args, **kwargs):
         self.mask_depth += 1
