@@ -71,9 +71,6 @@ class GifRenderer(SvgRenderer):
             with pool() as p:
                 rgba_frames = p.map(wand_convert_to_rgba, tqdm(args, "rasterizing"))
 
-            for i, w, h in rgba_frames:
-                print((len(i), w, h))
-
         rgba_frames = list(rgba_frames)
         _, width, height = rgba_frames[0]
         g = Gifski(width, height)
