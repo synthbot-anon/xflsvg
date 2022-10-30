@@ -10,7 +10,6 @@ import pyvips
 import wand.image
 import wand.color
 from multiprocessing import Pool, current_process
-import dask
 
 from .svgrenderer import SvgRenderer, split_colors
 
@@ -46,7 +45,7 @@ class GifRenderer(SvgRenderer):
         self,
         output_filename,
         framerate=24,
-        background="#0000",
+        background=None,
         pool=None,
         *args,
         **kwargs,
@@ -62,14 +61,18 @@ class GifRenderer(SvgRenderer):
 
         except ChildProcessError:
             print("failed to rasterize with vips... trying again with wand")
-            first_frame = wand_convert_to_rgba((xml_frames[0], background, None, None))
-            _, width, height = first_frame
+            _, _, width, height = super().get_svg_box(
+                kwargs.get("scale", 1), kwargs.get("padding", 0)
+            )
+            width = int(width)
+            height = int(height)
 
-            args = [(xml, background, width, height) for xml in xml_frames[1:]]
+            args = [(xml, background, width, height) for xml in xml_frames]
             with pool() as p:
-                other_frames = p.map(wand_convert_to_rgba, tqdm(args, "rasterizing"))
+                rgba_frames = p.map(wand_convert_to_rgba, tqdm(args, "rasterizing"))
 
-            rgba_frames = [first_frame, *other_frames]
+            for i, w, h in rgba_frames:
+                print((len(i), w, h))
 
         rgba_frames = list(rgba_frames)
         _, width, height = rgba_frames[0]

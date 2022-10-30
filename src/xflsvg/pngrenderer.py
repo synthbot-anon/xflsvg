@@ -19,7 +19,7 @@ def vips_convert_to_png(args):
     background = im.new_from_image(bg)
     im = background.composite(im, "over")
 
-    return im.write_to_buffer(".png")
+    return im.write_to_buffer(".png"), im.width, im.height
 
 
 def wand_convert_to_png(args):
@@ -58,7 +58,7 @@ class PngRenderer(SvgRenderer):
                 png_frames = p.map(vips_convert_to_png, tqdm(args, "rasterizing"))
 
         except ChildProcessError:
-            print("failed to rasterize with vips... trying again with wand")
+            print("everything is fine... trying again with wand")
             first_frame = wand_convert_to_png((xml_frames[0], background, None, None))
             _, width, height = first_frame
 
@@ -67,6 +67,7 @@ class PngRenderer(SvgRenderer):
                 other_frames = p.map(wand_convert_to_png, tqdm(args, "rasterizing"))
 
             png_frames = [first_frame, *other_frames]
+            print("ok that worked")
 
         for i, png_frame in enumerate(png_frames):
             png, width, height = png_frame

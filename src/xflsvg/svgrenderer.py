@@ -22,7 +22,7 @@ _IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0]
 def shape_frame_to_svg(shape_frame, mask):
     if shape_frame.ext == ".domshape":
         domshape = ET.fromstring(shape_frame.shape_data)
-        return xfl_domshape_to_svg(domshape, mask)
+        return xfl_domshape_to_svg(domshape, shape_frame.document_dims, mask)
     elif shape_frame.ext == ".trace":
         return dict_shape_to_svg(shape_frame.shape_data)
     else:
@@ -38,6 +38,12 @@ class SvgRenderer(XflRenderer):
         self.context = [
             [],
         ]
+
+        # Stupid hack since SVG linearGradients require the canvas size to complete
+        # the definition, but the canvas size isn't available until everything has
+        # been parsed. Instead of making two passes, we call these functions with
+        # the final canvas size to complete the definitions.
+        self.updaters = []
 
         self.mask_depth = 0
         self.matrix = [_IDENTITY_MATRIX]
@@ -58,24 +64,26 @@ class SvgRenderer(XflRenderer):
     def render_shape(self, shape_snapshot, *args, **kwargs):
         if self.mask_depth == 0:
             cache = self.shape_cache
-            id = f"MShape{shape_snapshot.identifier}"
+            id = f"Shape{shape_snapshot.identifier}"
         else:
             cache = self.mask_cache
-            id = f"Shape{shape_snapshot.identifier}"
+            id = f"MShape{shape_snapshot.identifier}"
 
         svg = cache.get(shape_snapshot.identifier, None)
         if not svg:
             svg = shape_frame_to_svg(shape_snapshot, self.mask_depth != 0)
             cache[shape_snapshot.identifier] = svg
-        fill_g, stroke_g, extra_defs, shape_paths = svg
+        fill_g, stroke_g, extra_defs, shape_paths, updaters = svg
+        self.updaters.extend(updaters)
 
         # TODO: calculate the bounding box on every use using hardware acceleration
-        shape_box = self.box_cache.get(shape_snapshot.identifier, None)
-        if not shape_box:
-            shape_box = paths_to_bounding_box(shape_paths, _IDENTITY_MATRIX)
-            self.box_cache[shape_snapshot.identifier] = shape_box
 
-        if self.mask_depth == 0 and shape_box:
+        if self.mask_depth == 0 and shape_paths:
+            shape_box = self.box_cache.get(shape_snapshot.identifier)
+            if shape_box == None:
+                shape_box = paths_to_bounding_box(shape_paths, _IDENTITY_MATRIX)
+                self.box_cache[shape_snapshot.identifier] = shape_box
+
             self.bounding_points[-1].extend(
                 [
                     (shape_box[0], shape_box[1]),
@@ -232,12 +240,16 @@ class SvgRenderer(XflRenderer):
         padding=0,
         suffix=True,
         skip_leading_blanks=False,
+        background=None,
         *args,
         **kwargs,
     ):
         result = []
         x, y, width, height = self.get_svg_box(scale, padding)
         found_nonempty_frame = False
+
+        for update_fn in self.updaters:
+            update_fn((width, height))
 
         for i, data in enumerate(self._captured_frames):
             if self.shape_counts[i] != 0:
@@ -263,6 +275,11 @@ class SvgRenderer(XflRenderer):
 
             defs_element = ET.SubElement(svg, "defs")
             defs_element.extend(defs.values())
+            if background:
+                ET.SubElement(
+                    svg, "rect", {"width": "100%", "height": "100%", "fill": background}
+                )
+
             svg.extend(context[0])
             image = ET.ElementTree(svg)
 
@@ -310,7 +327,7 @@ def splitext(path):
 
 def split_colors(color):
     if not color:
-        return 0, 0, 0
+        return 0, 0, 0, 0
     if not color.startswith("#"):
         raise Exception(f"invalid color: {color}")
 

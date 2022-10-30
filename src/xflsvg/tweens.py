@@ -106,7 +106,6 @@ def adobe_decomposition(a):
     shear = math.pi / 2 + rotation - math.atan2(a[1, 1], a[0, 1])
     scale_x = math.sqrt(a[0, 0] ** 2 + a[1, 0] ** 2)
     scale_y = math.sqrt(a[0, 1] ** 2 + a[1, 1] ** 2)
-
     return rotation, shear, scale_x, scale_y
 
 
@@ -150,7 +149,7 @@ class SolidColor:
     color: str
     alpha: float
 
-    def to_xfl(self):
+    def to_xfl(self, **kwargs):
         return f"""<SolidColor color="{self.color}" alpha="{self.alpha}" />"""
 
 
@@ -176,7 +175,7 @@ def interpolate_color(colx, ax, coly, ay, t):
     ai = interpolate_value(ax, ay, t)
 
     if ai == 0:
-        return "#FFFFFF", 0
+        return coly, 0
 
     ri = round(interpolate_value(rx * ax, ry * ay, t) / ai)
     gi = round(interpolate_value(gx * ax, gy * ay, t) / ai)
@@ -248,27 +247,11 @@ def interpolate_radial_gradients(x, y, t):
 
 
 def interpolate_linear_gradients(x, y, t):
-    xvec = (x.end[0] - x.start[0], x.end[1] - x.start[1])
-    yvec = (y.end[0] - y.start[0], y.end[1] - y.start[1])
-
-    xrot = math.atan2(xvec[1], xvec[0])
-    yrot = math.atan2(yvec[1], yvec[0])
-    xdist = math.sqrt(xvec[0] ** 2 + xvec[1] ** 2)
-    ydist = math.sqrt(yvec[0] ** 2 + yvec[1] ** 2)
-    xmid = (x.start[0] + xvec[0] / 2, x.start[1] + xvec[1] / 2)
-    ymid = (y.start[0] + yvec[0] / 2, y.start[1] + yvec[1] / 2)
-
-    rot = (1 - t) * xrot + t * yrot
-    mid0 = (1 - t) * xmid[0] + t * ymid[0]
-    mid1 = (1 - t) * xmid[1] + t * ymid[1]
-    dist = (1 - t) * xdist + t * ydist
-
-    new_start = (-math.cos(rot) * dist / 2 + mid0, -math.sin(rot) * dist / 2 + mid1)
-    new_end = (math.cos(rot) * dist / 2 + mid0, math.sin(rot) * dist / 2 + mid1)
+    new_matrix = simple_matrix_interpolation(x.matrix, y.matrix, t)
     new_stops = (
         interpolate_stops(a, b, t) for a, b in calculate_stop_paths(x.stops, y.stops)
     )
-    return LinearGradient(new_start, new_end, tuple(new_stops), x.spread_method)
+    return LinearGradient(new_matrix, tuple(new_stops), x.spread_method)
 
 
 def interpolate_solid_colors(x, y, t):
@@ -288,16 +271,20 @@ def interpolate_solid_with_gradient(solid, gradient, t):
     return dataclasses.replace(gradient, stops=new_stops)
 
 
-def get_fill_def(xmlnode):
+def get_fill_def(xmlnode, document_dims):
     if xmlnode.SolidColor:
         return SolidColor(
             xmlnode.SolidColor.get("color", "#000000"),
             float(xmlnode.SolidColor.get("alpha", 1)),
         )
     elif xmlnode.LinearGradient:
-        return LinearGradient.from_xfl(ET.fromstring(str(xmlnode.LinearGradient)))
+        return LinearGradient.from_xfl(
+            ET.fromstring(str(xmlnode.LinearGradient)), document_dims=document_dims
+        )
     elif xmlnode.RadialGradient:
-        return RadialGradient.from_xfl(ET.fromstring(str(xmlnode.RadialGradient)))
+        return RadialGradient.from_xfl(
+            ET.fromstring(str(xmlnode.RadialGradient)), document_dims=document_dims
+        )
 
     return None
 
@@ -329,8 +316,10 @@ def interpolate_fill_styles(start, end, t):
     assert False, f"unknown fill style: {start}"
 
 
-def replace_fill(element, start, replacement):
-    new_fill = next(BeautifulSoup(replacement.to_xfl(), "xml").children)
+def replace_fill(element, start, replacement, document_dims):
+    new_fill = next(
+        BeautifulSoup(replacement.to_xfl(document_dims=document_dims), "xml").children
+    )
 
     if isinstance(start, SolidColor):
         element.SolidColor.replace_with(new_fill)
@@ -345,7 +334,7 @@ def replace_fill(element, start, replacement):
     raise Exception(f"Unknown fill type: {start}")
 
 
-def interpolate_color_maps(start_shape, end_shape, i, duration, ease):
+def interpolate_color_maps(start_shape, end_shape, i, duration, ease, document_dims):
     t = ease["color"](i / (duration - 1)).y
     new_strokes = ""
     new_fills = ""
@@ -358,13 +347,13 @@ def interpolate_color_maps(start_shape, end_shape, i, duration, ease):
             for stroke_style in end_shape.strokes.findChildren("StrokeStyle"):
                 index = int(stroke_style.get("index"))
                 # TODO: tween stroke weight and VariablePointWidth elements
-                end_fills[index] = get_fill_def(stroke_style)
+                end_fills[index] = get_fill_def(stroke_style, document_dims)
 
             for stroke_style in new_strokes.findChildren("StrokeStyle"):
                 index = int(stroke_style.get("index"))
-                start_fill = get_fill_def(stroke_style)
+                start_fill = get_fill_def(stroke_style, document_dims)
                 interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
-                replace_fill(stroke_style, start_fill, interpolated)
+                replace_fill(stroke_style, start_fill, interpolated, document_dims)
 
         new_strokes = str(next(new_strokes.children))
 
@@ -375,13 +364,13 @@ def interpolate_color_maps(start_shape, end_shape, i, duration, ease):
             end_fills = defaultdict(lambda: None)
             for fill_style in end_shape.fills.findChildren("FillStyle"):
                 index = int(fill_style.get("index"))
-                end_fills[index] = get_fill_def(fill_style)
+                end_fills[index] = get_fill_def(fill_style, document_dims)
 
             for fill_style in new_fills.findChildren("FillStyle"):
                 index = int(fill_style.get("index"))
-                start_fill = get_fill_def(fill_style)
+                start_fill = get_fill_def(fill_style, document_dims)
                 interpolated = interpolate_fill_styles(start_fill, end_fills[index], t)
-                replace_fill(fill_style, start_fill, interpolated)
+                replace_fill(fill_style, start_fill, interpolated, document_dims)
 
             new_fills = str(next(new_fills.children))
 
@@ -462,12 +451,12 @@ def _parse_coord(coord):
     return _parse_number(x), _parse_number(y)
 
 
-def shape_interpolation(segment_xmlnodes, start, end, n_frames, ease):
+def shape_interpolation(segment_xmlnodes, start, end, n_frames, ease, document_dims):
     yield start.xmlnode
 
     for i in range(1, n_frames - 1):
         fills, strokes = interpolate_color_maps(
-            start.xmlnode, end.xmlnode, i, n_frames, ease
+            start.xmlnode, end.xmlnode, i, n_frames, ease, document_dims
         )
 
         edges_by_startpoint = _get_edges_by_startpoint(start.xmlnode)

@@ -125,10 +125,11 @@ class Frame:
 
 
 class ShapeFrame(Frame):
-    def __init__(self, shape_data, ext):
+    def __init__(self, shape_data, ext, document_dims=None):
         super().__init__()
         self.shape_data = shape_data
         self.ext = ext
+        self.document_dims = document_dims
 
     def render(self, *args, **kwargs):
         renderer = XflRenderer.current()
@@ -580,13 +581,13 @@ def _unroll_shapes(elements):
     return shapes
 
 
-def _center_point(shapes, mask):
+def _center_point(shapes, document_dims, mask):
     # Merge the bounding box of each individual shape
     result = None
 
     for elem in shapes:
         domshape = ET.fromstring(elem.shape.shape_data)
-        _, _, _, paths = xfl_domshape_to_svg(domshape, mask)
+        _, _, _, paths, _ = xfl_domshape_to_svg(domshape, document_dims, mask)
         matrix = elem.matrix or [1, 0, 0, 1, 0, 0]
         bbox = paths_to_bounding_box(paths, matrix)
 
@@ -694,8 +695,8 @@ class DOMFrame(AnimationObject, FrameContext):
             return
 
         mask = self.layer.mask_layer != None
-        spoint = _center_point(sshapes, mask)
-        epoint = _center_point(eshapes, mask)
+        spoint = _center_point(sshapes, self.xflsvg.document_dims, mask)
+        epoint = _center_point(eshapes, self.xflsvg.document_dims, mask)
 
         if spoint and epoint:
             for start in sshapes:
@@ -732,6 +733,7 @@ class DOMFrame(AnimationObject, FrameContext):
                     end,
                     self.duration + 1,
                     self.eases,
+                    self.asset.xflsvg.document_dims,
                 )
             )
 
@@ -1015,6 +1017,7 @@ class XflReader:
         width = float(self.xmlnode.DOMDocument.get("width", 550))
         height = float(self.xmlnode.DOMDocument.get("height", 400))
         self.box = [0, 0, width, height]
+        self.document_dims = (width, height)
 
     def get_timeline(self, timeline=None):
         if timeline == None:
@@ -1038,6 +1041,7 @@ class XflReader:
         return self.background
 
     def get_safe_asset(self, safe_asset_id):
+        safe_asset_id = safe_asset_id.replace("\\", "/")
         asset_id = html.unescape(safe_asset_id)
 
         if asset_id in self._assets:
@@ -1069,7 +1073,7 @@ class XflReader:
         if key in self._shapes:
             return self._shapes[key]
 
-        result = ShapeFrame(str(xmlnode), ".domshape")
+        result = ShapeFrame(str(xmlnode), ".domshape", self.document_dims)
         self._shapes[key] = result
         return result
 

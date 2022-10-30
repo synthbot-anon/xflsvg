@@ -244,7 +244,7 @@ def main():
     parser.add_argument(
         "--background",
         type=str,
-        default="#0000",
+        default=None,
         help="Use a background color for transparent pixels when converting to PNG or GIF. Default: #0000.",
     )
     parser.add_argument(
