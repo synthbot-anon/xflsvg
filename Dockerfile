@@ -27,14 +27,15 @@ RUN ./configure \
 # Set up user celestia
 RUN adduser --disabled-password --gecos "" celestia
 USER celestia
+WORKDIR /home/celestia/
+
+RUN cp .bashrc bashrc-bak
 
 # Install xflsvg
 RUN pip install virtualenv maturin && \
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh /dev/stdin -y
 ENV PATH="/home/celestia/.cargo/bin:$PATH"
 
-WORKDIR /home/celestia/
-USER celestia
 
 RUN python3 -m virtualenv .venv && \
   .venv/bin/pip install maturin
@@ -44,6 +45,7 @@ RUN .venv/bin/pip wheel 'xflsvg@git+https://github.com/synthbot-anon/xflsvg.git'
   rm *.whl
 
 RUN rm -rf .cargo .rustup .cache/* .local/share/virtualenv/
+RUN mv bashrc-bak .bashrc
 
 WORKDIR /host
 ENTRYPOINT ["python3", "-m", "xflsvg"]
