@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install basic packages
 RUN apt-get update && \
-  apt-get install -y python3 python3-pip python3-setuptools git curl && \
+  apt-get install -y python3 python3-pip python3-setuptools git curl libvips libwebp-dev && \
   pip install -U pip && \
   pip install wheel
 
@@ -20,7 +20,7 @@ RUN ./configure \
     --with-quantum-depth=8 \
     --without-perl \
     --without-magick-plus-plus \
-    --with-rsvg=yes && \
+    --with-webp=yes && \
   make -j$(nproc) && make install && ldconfig /usr/local/lib  && \
   rm -r /magick
 
@@ -33,7 +33,8 @@ RUN pip install virtualenv maturin && \
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh /dev/stdin -y
 ENV PATH="/home/celestia/.cargo/bin:$PATH"
 
-WORKDIR /home/celestia
+WORKDIR /home/celestia/
+USER celestia
 
 RUN python3 -m virtualenv .venv && \
   .venv/bin/pip install maturin

@@ -80,14 +80,20 @@ class WebpRenderer(SvgRenderer):
         webp_frames = convert_svgs_to_webps(xml_frames, background, pool)
         webp_images = [Image.open(BytesIO(x)) for x, _, _ in webp_frames]
 
-        webp_images[0].save(
-            output_filename,
-            format="webp",
-            append_images=webp_images[1:],
-            save_all=True,
-            duration=round(1000 / framerate),
-            loop=0,
-        )
+        for seq in sequences:
+            name, ext = splitext(output_filename)
+            cur_path = f"{name}_f{seq[0]:04d}-{seq[-1]+1:04d}{ext}"
+            cur_frames = [webp_images[i] for i in seq]
+
+            cur_frames[0].save(
+                cur_path,
+                format="webp",
+                append_images=cur_frames[1:],
+                save_all=True,
+                duration=round(1000 / framerate),
+                loop=0,
+                quality=100,
+            )
 
         return webp_images
 

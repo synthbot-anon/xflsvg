@@ -236,6 +236,8 @@ class Mapper:
                 current_pids = set([x.pid for x in self.pool._pool])
                 if current_pids - original_pids:
                     raise ChildProcessError()
+            except:
+                raise ChildProcessError()
 
 
 def merge_bounding_boxes(original, addition):

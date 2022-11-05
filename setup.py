@@ -55,6 +55,8 @@ SOFTWARE.
         "bs4",
         "lxml",
         "numpy",
+        "Pillow",
+        "pyvips",
         "Wand",
         "tqdm",
         "xfl2svg @ git+https://github.com/synthbot-anon/PluieElectrique-xfl2svg.git",
