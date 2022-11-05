@@ -39,12 +39,6 @@ class SvgRenderer(XflRenderer):
             [],
         ]
 
-        # Stupid hack since SVG linearGradients require the canvas size to complete
-        # the definition, but the canvas size isn't available until everything has
-        # been parsed. Instead of making two passes, we call these functions with
-        # the final canvas size to complete the definitions.
-        self.updaters = []
-
         self.mask_depth = 0
         self.matrix = [_IDENTITY_MATRIX]
         self.shape_cache = {}
@@ -55,6 +49,11 @@ class SvgRenderer(XflRenderer):
         self.bounding_points = [[]]
         self.box = None
         self.shape_counts = [0]
+        # Stupid hack since SVG linearGradients require the canvas size to complete
+        # the definition, but the canvas size isn't available until everything has
+        # been parsed. Instead of making two passes, we call these functions with
+        # the final canvas size to complete the definitions.
+        self.updaters = []
 
         self.force_x = None
         self.force_y = None
@@ -236,29 +235,31 @@ class SvgRenderer(XflRenderer):
     def compile(
         self,
         output_filename=None,
+        sequences=None,
         scale=1,
         padding=0,
         suffix=True,
-        skip_leading_blanks=False,
         background=None,
         *args,
         **kwargs,
     ):
         result = []
         x, y, width, height = self.get_svg_box(scale, padding)
-        found_nonempty_frame = False
 
         for update_fn in self.updaters:
             update_fn((width, height))
 
-        for i, data in enumerate(self._captured_frames):
-            if self.shape_counts[i] != 0:
-                found_nonempty_frame = True
+        if sequences == None:
+            sequences = [range(len(self._captured_frames))]
 
-            if skip_leading_blanks and not found_nonempty_frame:
+        allowed_frames = set()
+        for seq in sequences:
+            allowed_frames.update(set(seq))
+
+        for i, data in enumerate(self._captured_frames):
+            if i not in allowed_frames:
                 continue
 
-            defs, context = data
             svg = ET.Element(
                 "svg",
                 {
@@ -273,8 +274,11 @@ class SvgRenderer(XflRenderer):
                 },
             )
 
-            defs_element = ET.SubElement(svg, "defs")
-            defs_element.extend(defs.values())
+            if data != None:
+                defs, context = data
+                defs_element = ET.SubElement(svg, "defs")
+                defs_element.extend(defs.values())
+
             if background:
                 ET.SubElement(
                     svg, "rect", {"width": "100%", "height": "100%", "fill": background}
@@ -294,8 +298,13 @@ class SvgRenderer(XflRenderer):
         self._captured_frames = []
         self.bounding_points = [[]]
         self.box = None
+        self.shape_counts = [0]
+        self.updaters = []
 
         return result
+
+    def output_completed(self, output_path):
+        return False
 
 
 def _conditional(forced_value, calculated_value):

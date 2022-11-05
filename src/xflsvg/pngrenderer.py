@@ -81,6 +81,9 @@ class PngRenderer(SvgRenderer):
 
         return result
 
+    def output_completed(self, output_path):
+        return False
+
 
 def splitext(path):
     folder, filename = os.path.split(path)

@@ -25,6 +25,8 @@ class AssetFilter:
         self._file_context = []
         self._switch_on_frame = None
         self._mask_depth = 0
+        self.frame_empty = True
+        self.seq_labels = {}
 
         # Figure out which pieces to keep/remove within a render
         assert (not args.discard) or (
@@ -36,6 +38,7 @@ class AssetFilter:
             self.allow_relevant_assets = False
             self._default_render = True
             self._render_allowed = True
+            print("discarding", discard_list)
         elif args.retain:
             retain_list, fla_asset_relpaths = self._get_filtered_list(args.retain)
             self.relevant_asset_patterns = retain_list
@@ -43,6 +46,7 @@ class AssetFilter:
             self.allow_asset_fn = lambda x: x in retain_list
             self._default_render = False
             self._render_allowed = False
+            print("retaining", retain_list)
         else:
             self._render_allowed = True
             self._default_render = True
@@ -75,6 +79,9 @@ class AssetFilter:
             self._finish_on_frame = None
             self._finished = False
 
+        if args.seq_labels:
+            self.seq_labels = SampleReader.load_samples(args.seq_labels.pathspec)[0]
+
     @classmethod
     def _get_filtered_list(cls, input) -> Set[Tuple[str, str]]:
         if input.ext == ".samples":
@@ -92,6 +99,10 @@ class AssetFilter:
             relevant_assets = {(None, re.compile(input.path))}
             assets_by_label = {}
             fla_asset_relpaths = None
+        else:
+            raise Exception(
+                "--retain and --discard should be a .samples, .asset, or .regex. --isolate should be a .samples or .asset."
+            )
 
         if not input.param:
             return relevant_assets, fla_asset_relpaths
@@ -121,10 +132,7 @@ class AssetFilter:
 
         return timelines, fla_asset_path
 
-    def _get_fla_isolated_tasks(self, input):
-        basename = os.path.basename(os.path.normpath(input.pathspec))
-        fla = splitext(basename)[0]
-
+    def _get_fla_isolated_tasks(self, fla):
         if self.isolated_items_by_fla == None:
             yield None, None
             return
@@ -141,13 +149,15 @@ class AssetFilter:
 
     def get_tasks(self, input, output, batch=False):
         basename = os.path.basename(os.path.normpath(input.path.rstrip("/")))
+        if input.ext == ".trace":
+            basename = splitext(basename)[0]
 
         timelines = set()
         timelines.update(self._available_timelines.get(basename, []))
         timelines.update(self._available_timelines.get(None, []))
 
         for timeline in timelines:
-            for isolated_item, relpath in self._get_fla_isolated_tasks(input):
+            for isolated_item, relpath in self._get_fla_isolated_tasks(basename):
                 if relpath:
                     dest_path = os.path.join(output.path, relpath)
                 elif timeline:
@@ -163,7 +173,13 @@ class AssetFilter:
                     else:
                         dest_path = output.path
 
-                yield timeline, dest_path, isolated_item
+                seq_labels = self.seq_labels.get((basename, isolated_item), [])
+                if seq_labels:
+                    print(
+                        f"found labels for {isolated_item} in {basename}:", seq_labels
+                    )
+
+                yield timeline, dest_path, isolated_item, seq_labels
 
     def _allow_asset(self, fla, asset):
         if self.relevant_asset_patterns == None:
@@ -237,10 +253,11 @@ class AssetFilter:
 
     def _wrap_render_shape(self, render_shape):
         def _modified(frame, *args, **kwargs):
-            if (self._mask_depth > 0) or (
-                self._in_isolated_item and self._render_allowed
-            ):
+            if self._mask_depth > 0:
                 render_shape(frame, *args, **kwargs)
+            elif self._in_isolated_item and self._render_allowed:
+                render_shape(frame, *args, **kwargs)
+                self.frame_empty = False
 
         return _modified
 

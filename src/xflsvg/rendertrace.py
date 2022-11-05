@@ -25,7 +25,7 @@ def color_to_filter(color):
 def shape_frame_to_dict(shape_frame, mask):
     if shape_frame.ext == ".domshape":
         domshape = ET.fromstring(shape_frame.shape_data)
-        return json_normalize_xfl_domshape(domshape, mask)
+        return json_normalize_xfl_domshape(domshape, shape_frame.document_dims, mask)
     elif shape_frame.ext == ".trace":
         return shape_frame.shape_data
     else:
@@ -40,14 +40,19 @@ class RenderTracer(XflRenderer):
         self.context = [[]]
         self.frames = {}
         self._captured_frames = []
-        self.labels = {}
+        self.labels = []
+        self._recorded_frames = set()
+
+    def add_label(self, label):
+        self.labels.append(label)
 
     def set_camera(self, x, y, width, height):
         pass
 
     def on_frame_rendered(self, frame, *args, **kwargs):
-        if frame.data:
-            self.labels.setdefault(frame.identifier, {}).update(frame.data)
+        if frame.data and not frame.identifier in self._recorded_frames:
+            self.labels.extend(frame.data)
+            self._recorded_frames.add(frame.identifier)
 
         if len(self.context) != 1:
             return
@@ -117,92 +122,76 @@ class RenderTracer(XflRenderer):
     def set_box(*args, **kwargs):
         pass
 
-    def compile(self, output_folder=None, *args, **kwargs):
-        if output_folder:
-            os.makedirs(output_folder, exist_ok=True)
-            with open(os.path.join(output_folder, "shapes.json"), "w") as outp:
-                json.dump(self.shapes, outp)
-            with open(os.path.join(output_folder, "frames.json"), "w") as outp:
-                json.dump(self.frames, outp)
-            with open(os.path.join(output_folder, "labels.json"), "w") as outp:
-                json.dump(self.labels, outp)
+    def compile(self, output_file=None, *args, **kwargs):
+        with open(output_file, "w") as outp:
+            json.dump(
+                {
+                    "shapes": self.shapes,
+                    "frames": self.frames,
+                    "labels": self.labels,
+                },
+                outp,
+                indent=2,
+            )
 
         return self.shapes, self.frames, self.labels
 
+    def output_completed(self, output_path):
+        return False
+
 
 class RenderTraceReader:
-    def __init__(self, input_folder):
-        with open(os.path.join(input_folder, "shapes.json"), "r") as inp:
-            self.shapes = json.load(inp)
-        with open(os.path.join(input_folder, "frames.json"), "r") as inp:
-            self.frames = json.load(inp)
-        with open(os.path.join(input_folder, "labels.json"), "r") as inp:
-            self.labels = json.load(inp)
+    def __init__(self, input_path):
+        with open(input_path, "r") as inp:
+            data = json.load(inp)
+
+        self.shapes = data["shapes"]
+        self.frames = data["frames"]
+
         self.frame_cache = {}
         self._reversed_frames = None
+        self.frame_labels = {}
+        self.seq_labels = []
 
-        for frame_id, label in self.labels.items():
-            if "timeline" in label:
-                if label["timeline"].lower().startswith("document://"):
-                    self.camera = [0, 0, label["width"], label["height"]]
-                    self.background = label["background"]
-                    self.id = urlparse(label["source"]).netloc
-                    break
+        self.id = None
+        self.source = None
+        self.timelines = None
+        self.framerate = None
+        self.background = None
+        self.camera = None
+
+        self.element_info = {}
+
+        for label in data["labels"]:
+            if "frame.id" in label:
+                frame_id = label["frame.id"]
+                self.frame_labels.get(frame_id, []).append(label)
+
+                if label["type"] == "element":
+                    element_type = label.get("element_type", None)
+                    element_id = label.get("element_id", None)
+                    self.element_info[frame_id] = (element_type, element_id)
+
+            elif "frame.id[]" in label:
+                self.seq_labels.append(label)
+
+                if label["type"] == "clip":
+                    self.sequence = label["frame.id[]"]
+                    self.id = self.source = label.get("source", None)
+                    self.framerate = label.get("framerate", None)
+                    self.background = label.get("background", None)
+                    self.camera = label.get("camera", None)
 
     def get_camera(self):
         return self.camera
 
+    def get_background(self):
+        return self.background
+
     def get_timeline(self, id=None):
-        available_scenes = set()
-        result = []
-        for frame_id, label in self.labels.items():
-            if "timeline" not in label:
-                continue
-
-            if id:
-                if label["timeline"] == id:
-                    result.append((frame_id, label["frame"]))
-                continue
-
-            if not label["timeline"].lower().startswith("document://"):
-                continue
-            available_scenes.add(label["timeline"])
-            result.append((frame_id, label["frame"]))
-
-        if not id:
-            if len(available_scenes) == 0:
-                raise Exception(
-                    "No default scene found in the input rendertrace. Please specify a timeline to use."
-                )
-            if len(available_scenes) != 1:
-                option_str = "\n".join(available_scenes)
-                raise Exception(
-                    f"You need to specify which timeline to use from this rendertrace. Options:\n{option_str}"
-                )
-
-        result = sorted(result, key=lambda x: x[1])
-        for frame_id, i in result:
+        for frame_id in self.sequence:
             r = self.get_table_frame(frame_id)
             yield r
-
-    def get_scenes(self, frame):
-        if not self._reversed_frames:
-            self._reversed_frames = defaultdict(set)
-            for parent_str, data in self.frames.items():
-                for child in data["children"]:
-                    self._reversed_frames[child].add(int(parent_str))
-
-        pending = set([frame.identifier])
-        while pending:
-            next_child = pending.pop()
-            parents = self._reversed_frames[next_child]
-            for p in parents:
-                p_str = str(p)
-                if p_str in self.labels and "timeline" in self.labels[p_str]:
-                    timeline = self.labels[p_str]["timeline"]
-                    if timeline.startswith("file://"):
-                        yield timeline
-            pending.update(parents)
 
     def get_table_frame(self, render_index):
         render_index_str = str(render_index)
@@ -211,6 +200,7 @@ class RenderTraceReader:
             shape = self.shapes[render_index_str]
             shape = ShapeFrame(shape, ".trace")
             shape.identifier = render_index
+            shape.data = self.frame_labels.get(render_index, [])
             self.frame_cache[render_index] = shape
             return shape
         else:
@@ -221,6 +211,7 @@ class RenderTraceReader:
                 mask = self.get_table_frame(frame_data["mask"])
                 frame = MaskedFrame(mask, children)
                 frame.identifier = render_index
+                frame.data = self.frame_labels.get(render_index, [])
                 self.frame_cache[render_index] = frame
                 return frame
 
@@ -229,19 +220,7 @@ class RenderTraceReader:
             if filter:
                 filter = ColorObject(*filter["multiply"], *filter["shift"])
 
-            element_type = None
-            element_id = None
-            if render_index_str in self.labels:
-                data = self.labels[render_index_str]
-                if "layer" in data:
-                    element_type = "layer"
-                    element_id = data["layer"]
-                elif "timeline" in data:
-                    if data["timeline"].startswith("file://"):
-                        element_type = "scene"
-                    else:
-                        element_type = "asset"
-                    element_id = data["timeline"]
+            element_type, element_id = self.element_info.get(render_index, (None, None))
 
             frame = Frame(
                 transform,
@@ -251,5 +230,6 @@ class RenderTraceReader:
                 element_id=element_id,
             )
             frame.identifier = render_index
+            frame.data = self.frame_labels.get(render_index, [])
             self.frame_cache[render_index] = frame
             return frame

@@ -21,10 +21,6 @@ from .util import pool, splitext, get_matching_path, InputFileSpec, OutputFileSp
 from .xflsvg import XflReader
 
 
-# known buggy files:
-# ... MLP624_239:
-
-
 def as_number(data):
     bytes = hashlib.sha512(data.encode("utf8")).digest()[:8]
     return int.from_bytes(bytes, byteorder="big")
@@ -62,6 +58,54 @@ def unlock_output(output_path):
     os.remove(f"{output_path}.lock")
 
 
+class SeqSplitter:
+    def __init__(self, trim=False, split=False) -> None:
+        self.current_sequence = []
+        self.all_sequences = []
+        self.trim = trim
+        self.split = split
+        self.count = 0
+
+    def append(self, split_here):
+        if split_here:
+            self.current_sequence.append(None)
+        else:
+            self.current_sequence.append(self.count)
+
+        self.count += 1
+
+    def finish(self):
+        seq = self.current_sequence[:]
+        if self.trim or self.split:
+            for start in range(len(seq)):
+                if seq[start] != None:
+                    break
+
+            for end in range(len(seq)):
+                if seq[-end - 1] != None:
+                    break
+            end = len(seq) - end
+
+            seq = seq[start:end]
+
+        seqs = []
+        if not self.split:
+            seqs.append(seq)
+        else:
+            seqs.append([])
+            for item in seq:
+                if item == None:
+                    if len(seqs[-1]) != 0:
+                        seqs.append([])
+                else:
+                    seqs[-1].append(item)
+
+        if len(seqs[-1]) == 0:
+            seqs.pop()
+
+        return seqs
+
+
 def convert(
     input_path,
     input_type,
@@ -70,6 +114,7 @@ def convert(
     output_type,
     asset_filter,
     isolate_item,
+    seq_labels,
     args,
 ):
     input_path = os.path.normpath(input_path)
@@ -90,9 +135,13 @@ def convert(
         background = args.background
     elif args.use_document_attrs:
         background = reader.get_background()
-        print("getting from reader")
     else:
         background = None
+
+    if args.framerate:
+        framerate = args.framerate
+    else:
+        framerate = reader.framerate
 
     if output_type == ".svg":
         renderer = SvgRenderer()
@@ -106,26 +155,25 @@ def convert(
         renderer = GifRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
-        print("output path:", output_path)
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
         output_path = f"{output_path}/"
     elif output_type == ".trace":
         renderer = RenderTracer()
+        output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
     else:
         raise Exception(
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
         )
 
-    if output_completed(output_path):
-        print("already completed:", output_path)
-        return
-
     if output_folder:
         os.makedirs(output_folder, exist_ok=True)
-    lock_output(output_path)
+
+    if renderer.output_completed(output_path):
+        print("already completed:", output_path)
+        return
 
     logging.basicConfig(
         filename=os.path.join(output_folder, "logs.txt"),
@@ -135,29 +183,59 @@ def convert(
     logging.captureWarnings(True)
 
     if args.use_document_attrs:
-        renderer.set_camera(*reader.get_camera())
+        camera = reader.get_camera()
+        renderer.set_camera(*camera)
+    else:
+        camera = None
 
     try:
         timeline = reader.get_timeline(input_asset)
+        frames = list(timeline)
+        rendered_frames = []
+
+        if args.no_stills and len(frames) <= 1:
+            print("nothing to render for", output_path)
+            return
+
+        splitter = SeqSplitter(args.trim_blanks, args.split_on_blanks)
+        sequence = []
         with asset_filter.filtered_render_context(reader.id, renderer, isolate_item):
-            frames = list(timeline)
-            if args.no_stills and len(frames) <= 1:
-                return
-            for frame in tqdm(frames, desc="compiling clip"):
+            for i, frame in enumerate(tqdm(frames, desc="compiling clip")):
                 frame.render()
+                splitter.append(asset_filter.frame_empty)
+                asset_filter.frame_empty = True
+                sequence.append(frame.identifier)
+
+        if output_type == ".trace":
+            document_info = {
+                "type": "clip",
+                "frame.id[]": sequence,
+                "source": reader.id,
+                "framerate": framerate,
+            }
+            if background:
+                document_info["background"] = background
+
+            if camera:
+                document_info["camera"] = camera
+
+            renderer.add_label(document_info)
+
+            if seq_labels:
+                renderer.add_label(
+                    {"type": "tags", "frame.id[]": sequence, "tags": list(seq_labels)}
+                )
 
         renderer.compile(
             output_path,
+            sequences=splitter.finish(),
             reader=reader,
             padding=args.padding,
             scale=args.scale,
             background=background,
-            framerate=args.framerate,
-            skip_leading_blanks=args.skip_leading_blanks,
+            framerate=framerate,
             pool=args.threads,
         )
-
-        unlock_output(output_path)
 
     except KeyboardInterrupt:
         raise
@@ -168,7 +246,6 @@ def convert(
             f"- check {output_folder}/logs.txt for details.",
         )
         logging.exception(traceback.format_exc())
-        unlock_output(output_path)
 
 
 def get_matching_path(input_root, output_root, input_path):
@@ -242,6 +319,12 @@ def main():
         help='Individually render each asset in the given samples folder (e.g., /path/to/labels/.samples). Optionally specify which labels to use in brackets (e.g., ".../labels/.samples[Clean,Noisy]").',
     )
     parser.add_argument(
+        "--seq-labels",
+        type=InputFileSpec.from_spec,
+        help="Attach .samples labels to each output file. This is only applicable for .trace output files.",
+        default=None,
+    )
+    parser.add_argument(
         "--background",
         type=str,
         default=None,
@@ -253,14 +336,19 @@ def main():
         default=False,
     )
     parser.add_argument(
-        "--skip-leading-blanks",
+        "--trim-blanks",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--split-on-blanks",
         action="store_true",
         default=False,
     )
     parser.add_argument(
         "--framerate",
         type=float,
-        default=24,
+        default=None,
     )
     parser.add_argument(
         "--threads",
@@ -285,7 +373,7 @@ def main():
     ), "Output arg must end in either .svg, .png, .gif, .samples, or .trace"
 
     if not args.batch:
-        for input_asset, output_path, isolated_item in filter.get_tasks(
+        for input_asset, output_path, isolated_item, seq_labels in filter.get_tasks(
             args.input, args.output, args.batch
         ):
             print(
@@ -301,6 +389,7 @@ def main():
                 args.output.ext,
                 filter,
                 isolated_item,
+                seq_labels,
                 args,
             )
         return
@@ -320,7 +409,7 @@ def main():
                 continue
 
             # output_location = args.output.matching_descendent(input)
-            for input_asset, output_path, isolated_item in filter.get_tasks(
+            for input_asset, output_path, isolated_item, seq_labels in filter.get_tasks(
                 input, args.output, args.batch
             ):
                 print(
@@ -336,6 +425,7 @@ def main():
                     args.output.ext,
                     filter,
                     isolated_item,
+                    seq_labels,
                     args,
                 )
 

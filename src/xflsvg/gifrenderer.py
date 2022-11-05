@@ -45,6 +45,7 @@ class GifRenderer(SvgRenderer):
         self,
         output_filename,
         framerate=24,
+        sequences=None,
         background=None,
         pool=None,
         *args,
@@ -73,15 +74,22 @@ class GifRenderer(SvgRenderer):
 
         rgba_frames = list(rgba_frames)
         _, width, height = rgba_frames[0]
-        g = Gifski(width, height)
-        g.set_file_output(output_filename)
-        timestamp = 0
 
-        for rgba, width, height in tqdm(rgba_frames, desc="creating gif"):
-            g.add_frame_rgba(rgba, timestamp)
-            timestamp += 1 / framerate
+        for seq in sequences:
+            g = Gifski(width, height)
+            name, ext = splitext(output_filename)
+            g.set_file_output(f"{name}_f{seq[0]:04d}-{seq[-1]+1:04d}{ext}")
+            timestamp = 0
 
-        g.finish()
+            for i in tqdm(seq, desc="creating gif"):
+                rgba, width, height = rgba_frames[i]
+                g.add_frame_rgba(rgba, timestamp)
+                timestamp += 1 / framerate
+
+            g.finish()
+
+    def output_completed(self, output_path):
+        return False
 
 
 def splitext(path):

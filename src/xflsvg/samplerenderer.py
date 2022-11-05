@@ -1,16 +1,19 @@
 import base64
 from collections import defaultdict
 import hashlib
+import json
 import math
 import os
 import re
 import shutil
 
 from lxml import etree
+from xfl2svg.shape.shape import json_normalize_xfl_domshape
 
 from .svgrenderer import SvgRenderer
 from .util import splitext
 from .xflsvg import XflRenderer, Asset
+from .svgrenderer import shape_frame_to_svg
 
 _EXPLICIT_FLA = re.compile(r"f-(.*)\.(fla|xfl)", re.IGNORECASE)
 _IMPLICIT_FLA = re.compile(r"(.*)\.(fla|xfl)", re.IGNORECASE)
@@ -59,7 +62,7 @@ def id_to_filename(id):
 
 
 def hash(data):
-    half_sha512 = hashlib.sha512(data).digest()[:32]
+    half_sha512 = hashlib.sha512(data.encode("utf-8")).digest()[:32]
     return base64.urlsafe_b64encode(half_sha512).decode("ascii")
 
 
@@ -107,7 +110,10 @@ def extract_ids(filepath):
     if frame_start == -1 or frame_end == -1:
         frame = 0
     else:
-        frame = int(name[frame_start:frame_end])
+        try:
+            frame = int(name[frame_start:frame_end])
+        except:
+            frame = None
     return (
         extract_fla_name(filepath),
         extract_symbol_name(filepath),
@@ -120,15 +126,36 @@ _xml_parser = etree.XMLParser(remove_blank_text=True)
 
 
 class SampleRenderer(XflRenderer):
-    def __init__(self) -> None:
+    def __init__(self, render_shapes=False) -> None:
         super().__init__()
         self._asset_frames = defaultdict(list)
         self._shape_frames = {}
+        self.mask_depth = 0
+        self.render_shapes = render_shapes
 
-    def render_shape(self, svg_frame, *args, **kwargs):
-        domshape = etree.XML(svg_frame.domshape, parser=_xml_parser)
-        id = hash(etree.tostring(domshape))
-        self._shape_frames[id] = svg_frame
+    def render_shape(self, shape_frame, *args, **kwargs):
+        if not self.render_shapes:
+            return
+
+        if shape_frame.identifier in self._shape_frames:
+            return
+
+        if shape_frame.ext == ".trace":
+            shape_data = shape_frame.shape_data
+        elif shape_frame.ext == ".domshape":
+            domshape = etree.fromstring(shape_frame.shape_data)
+            shape_data = json_normalize_xfl_domshape(
+                domshape, shape_frame.document_dims, self.mask_depth > 0
+            )
+
+        id = hash(json.dumps(shape_data, sort_keys=True))
+        self._shape_frames[id] = shape_frame
+
+    def push_mask(self, masked_snapshot, *args, **kwargs):
+        self.mask_depth += 1
+
+    def pop_mask(self, masked_snapshot, *args, **kwargs):
+        self.mask_depth -= 1
 
     def on_frame_rendered(self, frame, *args, **kwargs):
         if frame.element_type != "asset":
@@ -151,19 +178,22 @@ class SampleRenderer(XflRenderer):
             with renderer:
                 selected_frame.render()
 
-            scene = next(iter(reader.get_scenes(selected_frame)))
-            source = scene[8:].split("/")[0]
+            source = reader.id
             filename = create_filename(source, asset_id, None, idx)
 
             destination = os.path.join(output_filename, f"{filename}.svg")
             renderer.compile(destination, suffix=False, *args, **kwargs)
 
-        for shape_id, shape_frame in self._shape_frames.items():
-            with renderer:
-                shape_frame.render()
-            filename = create_filename(None, None, shape_id, idx)
-            destination = os.path.join(output_filename, f"{filename}.svg")
-            renderer.compile(destination, suffix=False, *args, **kwargs)
+        if self.render_shapes:
+            for shape_id, shape_frame in self._shape_frames.items():
+                with renderer:
+                    shape_frame.render()
+                filename = create_filename(None, None, shape_id, idx)
+                destination = os.path.join(output_filename, f"{filename}.svg")
+                renderer.compile(destination, suffix=False, *args, **kwargs)
+
+    def output_completed(self, output_path):
+        return False
 
 
 class SampleReader:
@@ -220,6 +250,9 @@ class SampleReader:
             for f in files:
                 try:
                     fla, asset, shape, frame = extract_ids(f)
+                    if fla == None:
+                        print("failed to parse filename label from:", f)
+                        continue
                     label = os.path.basename(root)
                     result[(fla, asset)].update(labels)
                     asset_path = os.path.splitext(os.path.join(relpath, f))[0]

@@ -101,9 +101,22 @@ class Frame:
         self.matrix = matrix
         self.color = color
         self.children = children or []
-        self.data = {}
+        self.data = []
         self.element_type = element_type
         self.element_id = element_id
+
+        if element_type or element_id:
+            element_label = {
+                "type": "element",
+                "frame.id": self.identifier,
+            }
+
+            if element_type:
+                element_label["element_type"] = element_type
+            if element_id:
+                element_label["element_id"] = element_id
+
+            self.data.append(element_label)
 
     def add_child(self, child_frame):
         self.children.append(child_frame)
@@ -791,6 +804,18 @@ class DOMFrame(AnimationObject, FrameContext):
                 new_frame.add_child(element[iteration])
 
         self._frames[frame_index] = new_frame
+
+        new_frame.data.append(
+            {
+                "type": "placement",
+                "frame.id": new_frame.identifier,
+                "file": self.xflsvg.id,
+                "timeline": self.asset.id,
+                "layer": self.layer.id,
+                "index": frame_index,
+            }
+        )
+
         return new_frame
 
     def __len__(self) -> int:
@@ -868,8 +893,6 @@ class Layer(AnimationObject):
             return self._frames[frame_index]
 
         new_frame = Frame(element_type="layer", element_id=self.name)
-        new_frame.data["layer"] = self.name or ""
-        new_frame.data["frame"] = frame_index
 
         for domframe in self.domframes:
             if domframe.has_index(frame_index):
@@ -929,15 +952,6 @@ class Asset(AnimationObject):
             element_type = "asset"
 
         new_frame = Frame(element_type=element_type, element_id=self.id)
-        new_frame.data["timeline"] = self.id
-        new_frame.data["source"] = self.xflsvg.id
-        new_frame.data["frame"] = frame_index
-        if self.width:
-            new_frame.data["width"] = self.width
-        if self.height:
-            new_frame.data["height"] = self.height
-        if self.background:
-            new_frame.data["background"] = self.background
 
         masked_frames = {}
         for layer in self.layers:
@@ -993,7 +1007,7 @@ class Document(Asset):
 
         super().__init__(
             xflsvg,
-            f"document://{xflsvg.id}/{timeline_name}",
+            f"timeline://{xflsvg.id}/{timeline_name}",
             xmlnode,
             timeline=dom_timeline,
             width=self.width,
@@ -1005,7 +1019,7 @@ class Document(Asset):
 class XflReader:
     def __init__(self, xflsvg_dir: str):
         self.filepath = os.path.normpath(xflsvg_dir)  # deal with trailing /
-        self.id = f"{os.path.basename(self.filepath)}.xfl"  # MUST come after normpath
+        self.id = f"{os.path.basename(self.filepath)}"  # MUST come after normpath
         self._assets = {}
         self._shapes = {}
 
@@ -1018,6 +1032,7 @@ class XflReader:
         height = float(self.xmlnode.DOMDocument.get("height", 400))
         self.box = [0, 0, width, height]
         self.document_dims = (width, height)
+        self.framerate = float(self.xmlnode.DOMDocument.get("frameRate", 24))
 
     def get_timeline(self, timeline=None):
         if timeline == None:
@@ -1026,8 +1041,8 @@ class XflReader:
         if isinstance(timeline, int):
             return Document(self, self.xmlnode, timeline)
 
-        if timeline.startswith("file://"):
-            prefix = f"file://{self.id}/"
+        if timeline.startswith("timeline://"):
+            prefix = f"timeline://{self.id}/"
             assert timeline.startswith(prefix)
             scene_name = timeline[len(prefix) :]
             return Document(self, self.xmlnode, scene_name)
