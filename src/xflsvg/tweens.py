@@ -40,7 +40,7 @@ def serialize_matrix(linear, translation):
 def _adjust_adobe_matrix_params(rotation, srot, erot, sshear, eshear):
     if rotation > 0:
         if erot < srot:
-            erot += 2 * math.p
+            erot += 2 * math.pi
         erot += rotation * 2 * math.pi
     elif rotation < 0:
         if erot > srot:
