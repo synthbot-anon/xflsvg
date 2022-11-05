@@ -38,7 +38,6 @@ class AssetFilter:
             self.allow_relevant_assets = False
             self._default_render = True
             self._render_allowed = True
-            print("discarding", discard_list)
         elif args.retain:
             retain_list, fla_asset_relpaths = self._get_filtered_list(args.retain)
             self.relevant_asset_patterns = retain_list
@@ -46,7 +45,6 @@ class AssetFilter:
             self.allow_asset_fn = lambda x: x in retain_list
             self._default_render = False
             self._render_allowed = False
-            print("retaining", retain_list)
         else:
             self._render_allowed = True
             self._default_render = True
@@ -174,10 +172,6 @@ class AssetFilter:
                         dest_path = output.path
 
                 seq_labels = self.seq_labels.get((basename, isolated_item), [])
-                if seq_labels:
-                    print(
-                        f"found labels for {isolated_item} in {basename}:", seq_labels
-                    )
 
                 yield timeline, dest_path, isolated_item, seq_labels
 

@@ -1,17 +1,20 @@
+import multiprocessing
 import os
 from xml.etree import ElementTree
 
+from io import BytesIO
+from gifski import Gifski
 from tqdm import tqdm
+from PIL import Image
 import pyvips
-from multiprocessing import Pool
+import wand.image
+import wand.color
+from multiprocessing import Pool, current_process
 
 from .svgrenderer import SvgRenderer, split_colors
 
-import wand.color
-import wand.image
 
-
-def vips_convert_to_png(args):
+def vips_convert_to_webp(args):
     xml, bg = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
     im = pyvips.Image.new_from_buffer(svg, options="")
@@ -19,20 +22,20 @@ def vips_convert_to_png(args):
     background = im.new_from_image(bg)
     im = background.composite(im, "over")
 
-    return im.write_to_buffer(".png"), im.width, im.height
+    return im.write_to_buffer(".webp"), im.width, im.height
 
 
-def wand_convert_to_png(args):
+def wand_convert_to_webp(args):
     xml, bg, width, height = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
 
     background = wand.color.Color(bg)
     im = wand.image.Image(blob=svg, background=background, width=width, height=height)
 
-    return im.make_blob("png"), im.width, im.height
+    return im.make_blob("webp"), im.width, im.height
 
 
-def convert_svgs_to_pngs(xml_frames, background, pool):
+def convert_svgs_to_webps(xml_frames, background, pool):
     bg = split_colors(background)
     args = [(xml, bg) for xml in xml_frames]
 
@@ -40,51 +43,53 @@ def convert_svgs_to_pngs(xml_frames, background, pool):
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
         with pool() as p:
-            png_frames = p.map(vips_convert_to_png, tqdm(args, "rasterizing"))
+            webp_frames = p.map(vips_convert_to_webp, tqdm(args, "rasterizing"))
 
     except ChildProcessError:
         print("everything is fine... trying again with wand")
-        first_frame = wand_convert_to_png((xml_frames[0], background, None, None))
+        first_frame = wand_convert_to_webp((xml_frames[0], background, None, None))
         _, width, height = first_frame
 
         args = [(xml, background, width, height) for xml in xml_frames[1:]]
         with pool() as p:
-            other_frames = p.map(wand_convert_to_png, tqdm(args, "rasterizing"))
+            other_frames = p.map(wand_convert_to_webp, tqdm(args, "rasterizing"))
 
-        png_frames = [first_frame, *other_frames]
+        webp_frames = [first_frame, *other_frames]
         print("ok that worked")
 
-    return png_frames
+    return webp_frames
 
 
-class PngRenderer(SvgRenderer):
+class WebpRenderer(SvgRenderer):
     def __init__(self):
         super().__init__()
 
     def compile(
         self,
-        output_filename=None,
-        suffix=True,
-        background="#0000",
+        output_filename,
+        framerate=24,
+        sequences=None,
+        background=None,
         pool=None,
+        suffix=True,
         *args,
         **kwargs,
     ):
         result = []
         xml_frames = super().compile(*args, **kwargs)
-        png_frames = convert_svgs_to_pngs(xml_frames, background, pool)
+        webp_frames = convert_svgs_to_webps(xml_frames, background, pool)
+        webp_images = [Image.open(BytesIO(x)) for x, _, _ in webp_frames]
 
-        for i, png_frame in enumerate(png_frames):
-            png, width, height = png_frame
-            result.append(png)
+        webp_images[0].save(
+            output_filename,
+            format="webp",
+            append_images=webp_images[1:],
+            save_all=True,
+            duration=round(1000 / framerate),
+            loop=0,
+        )
 
-            if output_filename:
-                name, ext = splitext(output_filename)
-                sfx = suffix and "%04d" % i or ""
-                with open(f"{name}{sfx}{ext}", "wb") as outp:
-                    outp.write(png)
-
-        return result
+        return webp_images
 
     def output_completed(self, output_path):
         return False

@@ -16,6 +16,7 @@ from .gifrenderer import GifRenderer
 from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
+from .webprenderer import WebpRenderer
 from .samplerenderer import SampleReader, SampleRenderer
 from .util import pool, splitext, get_matching_path, InputFileSpec, OutputFileSpec
 from .xflsvg import XflReader
@@ -155,6 +156,10 @@ def convert(
         renderer = GifRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+    elif output_type == ".webp":
+        renderer = WebpRenderer()
+        output_path = f"{output_path}{output_type}"
+        output_folder = os.path.dirname(output_path)
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
@@ -263,7 +268,7 @@ def main():
     parser.add_argument(
         "output",
         type=OutputFileSpec.from_spec,
-        help="Output file or folder. This can be a render trace (/path/to/folder/.trace), an SVG (/path/to/file.svg), a PNG (.../file.png), a GIF (.../file.gif), or a symbol sample folder (.../folder/.samples).",
+        help="Output file or folder. This can be a render trace (/path/to/folder/.trace), an SVG (/path/to/file.svg), a PNG (.../file.png), a GIF (.../file.gif), a WEBP (.../file.webp), or a symbol sample folder (.../folder/.samples).",
     )
     parser.add_argument(
         "--batch",
@@ -368,6 +373,7 @@ def main():
         ".svg",
         ".png",
         ".gif",
+        ".webp",
         ".samples",
         ".trace",
     ), "Output arg must end in either .svg, .png, .gif, .samples, or .trace"
