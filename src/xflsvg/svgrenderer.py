@@ -290,7 +290,7 @@ class SvgRenderer(XflRenderer):
             if output_filename:
                 name, ext = splitext(output_filename)
                 sfx = suffix and "%04d" % i or ""
-                with open(f"{name}{sfx}{ext}", "w") as outp:
+                with open(f"{name}_f{sfx}{ext}", "w") as outp:
                     image.write(outp, encoding="unicode")
 
             result.append(image)
@@ -302,9 +302,6 @@ class SvgRenderer(XflRenderer):
         self.updaters = []
 
         return result
-
-    def output_completed(self, output_path):
-        return False
 
 
 def _conditional(forced_value, calculated_value):

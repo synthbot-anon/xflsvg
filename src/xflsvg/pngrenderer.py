@@ -25,17 +25,12 @@ def vips_convert_to_png(args):
 def wand_convert_to_png(args):
     xml, bg, width, height = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-
-    background = wand.color.Color(bg)
-    im = wand.image.Image(blob=svg, background=background, width=width, height=height)
+    im = wand.image.Image(blob=svg, background=bg, width=width, height=height)
 
     return im.make_blob("png"), im.width, im.height
 
 
 def convert_svgs_to_pngs(xml_frames, background, pool):
-    bg = split_colors(background)
-    args = [(xml, bg) for xml in xml_frames]
-
     try:
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
@@ -44,10 +39,11 @@ def convert_svgs_to_pngs(xml_frames, background, pool):
 
     except ChildProcessError:
         print("everything is fine... trying again with wand")
-        first_frame = wand_convert_to_png((xml_frames[0], background, None, None))
+        bg = background and wand.color.Color(background)
+        first_frame = wand_convert_to_png((xml_frames[0], bg, None, None))
         _, width, height = first_frame
 
-        args = [(xml, background, width, height) for xml in xml_frames[1:]]
+        args = [(xml, bg, width, height) for xml in xml_frames[1:]]
         with pool() as p:
             other_frames = p.map(wand_convert_to_png, tqdm(args, "rasterizing"))
 
@@ -81,13 +77,10 @@ class PngRenderer(SvgRenderer):
             if output_filename:
                 name, ext = splitext(output_filename)
                 sfx = suffix and "%04d" % i or ""
-                with open(f"{name}{sfx}{ext}", "wb") as outp:
+                with open(f"{name}_f{sfx}{ext}", "wb") as outp:
                     outp.write(png)
 
         return result
-
-    def output_completed(self, output_path):
-        return False
 
 
 def splitext(path):

@@ -30,9 +30,7 @@ def vips_convert_to_rgba(args):
 def wand_convert_to_rgba(args):
     xml, bg, width, height = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-
-    background = wand.color.Color(bg)
-    im = wand.image.Image(blob=svg, background=background, width=width, height=height)
+    im = wand.image.Image(blob=svg, background=bg, width=width, height=height)
 
     return im.make_blob("RGBA"), im.width, im.height
 
@@ -67,8 +65,9 @@ class GifRenderer(SvgRenderer):
             )
             width = int(width)
             height = int(height)
+            bg = background and wand.color.Color(background)
 
-            args = [(xml, background, width, height) for xml in xml_frames]
+            args = [(xml, bg, width, height) for xml in xml_frames]
             with pool() as p:
                 rgba_frames = p.map(wand_convert_to_rgba, tqdm(args, "rasterizing"))
 
@@ -87,9 +86,6 @@ class GifRenderer(SvgRenderer):
                 timestamp += 1 / framerate
 
             g.finish()
-
-    def output_completed(self, output_path):
-        return False
 
 
 def splitext(path):

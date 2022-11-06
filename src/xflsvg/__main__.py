@@ -51,12 +51,47 @@ def output_completed(output_path):
     return False
 
 
-def lock_output(output_path):
-    open(f"{output_path}.lock", "w").close()
+def lock_output(output_path, known_files):
+    lock_path = f"{output_path}.progress"
+    if os.path.exists(lock_path):
+        return True
+    
+    if os.path.exists(output_path):
+        return False
+    
+    open(lock_path, "w").close()
+    return True
+
+FRAMERANGE_REGEX = re.compile(r'(.*)_f\d+(-\d+)?(\.[^.]*)')
+
+def lock_output_with_framerange(output_path, known_files):
+    lock_path = f"{output_path}.progress"
+    if os.path.exists(lock_path):
+        return True
+    
+    dirname = os.path.dirname(output_path)
+    basename = os.path.basename(output_path)
+
+    dir_cache = known_files.get(dirname, None)
+    if dir_cache == None:
+        known_files[dirname] = dir_cache = set()
+        for candidate in os.listdir(dirname):
+            match = FRAMERANGE_REGEX.match(candidate)
+            if match:
+                dir_cache.add(match.group(1) + match.group(3))
+            else:
+                dir_cache.add(candidate)
+    
+    if basename in dir_cache:
+        return False
+    
+    open(lock_path, "w").close()
+    return True
 
 
 def unlock_output(output_path):
-    os.remove(f"{output_path}.lock")
+    lock_path = f"{output_path}.progress"
+    os.remove(f"{output_path}.progress")
 
 
 class SeqSplitter:
@@ -106,6 +141,10 @@ class SeqSplitter:
 
         return seqs
 
+def create_temp_file(output_path):
+    dirname = os.path.dirname(output_path)
+    basename = f'temp-{os.path.basename(output_path)}'
+    return os.path.join(dirname, basename)
 
 def convert(
     input_path,
@@ -117,8 +156,10 @@ def convert(
     isolate_item,
     seq_labels,
     args,
+    known_files={},
 ):
     input_path = os.path.normpath(input_path)
+    
     if input_type == ".xfl":
         if os.path.isdir(input_path):
             input_folder = input_path
@@ -143,42 +184,50 @@ def convert(
         framerate = args.framerate
     else:
         framerate = reader.framerate
-
+    
+    lock_fn = None
     if output_type == ".svg":
         renderer = SvgRenderer()
-        output_path = f"{output_path}/{output_type}"
+        output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output_with_framerange
     elif output_type == ".png":
         renderer = PngRenderer()
-        output_path = f"{output_path}/{output_type}"
+        output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output_with_framerange
     elif output_type == ".gif":
         renderer = GifRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output_with_framerange
     elif output_type == ".webp":
         renderer = WebpRenderer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output_with_framerange
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
         output_path = f"{output_path}/"
+        lock_fn = lock_output
     elif output_type == ".trace":
         renderer = RenderTracer()
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output
     else:
         raise Exception(
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
         )
-
+    
     if output_folder:
         os.makedirs(output_folder, exist_ok=True)
-
-    if renderer.output_completed(output_path):
-        print("already completed:", output_path)
-        return
+    
+    if not lock_fn(output_path, known_files):
+        if args.resume:
+            print('already completed', output_path)
+            return
 
     logging.basicConfig(
         filename=os.path.join(output_folder, "logs.txt"),
@@ -241,6 +290,8 @@ def convert(
             framerate=framerate,
             pool=args.threads,
         )
+
+        unlock_output(output_path)
 
     except KeyboardInterrupt:
         raise
@@ -359,6 +410,11 @@ def main():
         "--threads",
         type=pool,
         default=pool(1),
+    )
+    parser.add_argument(
+        "--resume",
+        action='store_true',
+        default=False,
     )
 
     args = parser.parse_args()

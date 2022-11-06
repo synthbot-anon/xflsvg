@@ -192,9 +192,6 @@ class SampleRenderer(XflRenderer):
                 destination = os.path.join(output_filename, f"{filename}.svg")
                 renderer.compile(destination, suffix=False, *args, **kwargs)
 
-    def output_completed(self, output_path):
-        return False
-
 
 class SampleReader:
     _labels_by_asset = {}
@@ -240,7 +237,7 @@ class SampleReader:
     def get_labels(self):
         result = defaultdict(set)
         orig_paths = {}
-        for root, dirs, files in os.walk(self.input_folder):
+        for root, dirs, files in os.walk(self.input_folder, followlinks=True):
             if not files:
                 continue
 

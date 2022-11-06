@@ -136,9 +136,6 @@ class RenderTracer(XflRenderer):
 
         return self.shapes, self.frames, self.labels
 
-    def output_completed(self, output_path):
-        return False
-
 
 class RenderTraceReader:
     def __init__(self, input_path):

@@ -22,23 +22,18 @@ def vips_convert_to_webp(args):
     background = im.new_from_image(bg)
     im = background.composite(im, "over")
 
-    return im.write_to_buffer(".webp"), im.width, im.height
+    return im.write_to_buffer(".webp[lossless][Q=100]"), im.width, im.height
 
 
 def wand_convert_to_webp(args):
     xml, bg, width, height = args
     svg = ElementTree.tostring(xml.getroot(), encoding="utf-8")
-
-    background = wand.color.Color(bg)
-    im = wand.image.Image(blob=svg, background=background, width=width, height=height)
-
+    im = wand.image.Image(blob=svg, background=bg, width=width, height=height)
+    im.compression_quality = 100
     return im.make_blob("webp"), im.width, im.height
 
 
 def convert_svgs_to_webps(xml_frames, background, pool):
-    bg = split_colors(background)
-    args = [(xml, bg) for xml in xml_frames]
-
     try:
         bg = split_colors(background)
         args = [(xml, bg) for xml in xml_frames]
@@ -47,10 +42,11 @@ def convert_svgs_to_webps(xml_frames, background, pool):
 
     except ChildProcessError:
         print("everything is fine... trying again with wand")
-        first_frame = wand_convert_to_webp((xml_frames[0], background, None, None))
+        bg = background and wand.color.Color(background)
+        first_frame = wand_convert_to_webp((xml_frames[0], bg, None, None))
         _, width, height = first_frame
 
-        args = [(xml, background, width, height) for xml in xml_frames[1:]]
+        args = [(xml, bg, width, height) for xml in xml_frames[1:]]
         with pool() as p:
             other_frames = p.map(wand_convert_to_webp, tqdm(args, "rasterizing"))
 
@@ -92,13 +88,10 @@ class WebpRenderer(SvgRenderer):
                 save_all=True,
                 duration=round(1000 / framerate),
                 loop=0,
-                quality=100,
+                quality=95,
             )
 
         return webp_images
-
-    def output_completed(self, output_path):
-        return False
 
 
 def splitext(path):
