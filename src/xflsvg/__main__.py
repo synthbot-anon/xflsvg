@@ -55,20 +55,22 @@ def lock_output(output_path, known_files):
     lock_path = f"{output_path}.progress"
     if os.path.exists(lock_path):
         return True
-    
+
     if os.path.exists(output_path):
         return False
-    
+
     open(lock_path, "w").close()
     return True
 
-FRAMERANGE_REGEX = re.compile(r'(.*)_f\d+(-\d+)?(\.[^.]*)')
+
+FRAMERANGE_REGEX = re.compile(r"(.*)_f\d+(-\d+)?(\.[^.]*)")
+
 
 def lock_output_with_framerange(output_path, known_files):
     lock_path = f"{output_path}.progress"
     if os.path.exists(lock_path):
         return True
-    
+
     dirname = os.path.dirname(output_path)
     basename = os.path.basename(output_path)
 
@@ -81,10 +83,10 @@ def lock_output_with_framerange(output_path, known_files):
                 dir_cache.add(match.group(1) + match.group(3))
             else:
                 dir_cache.add(candidate)
-    
+
     if basename in dir_cache:
         return False
-    
+
     open(lock_path, "w").close()
     return True
 
@@ -141,10 +143,12 @@ class SeqSplitter:
 
         return seqs
 
+
 def create_temp_file(output_path):
     dirname = os.path.dirname(output_path)
-    basename = f'temp-{os.path.basename(output_path)}'
+    basename = f"temp-{os.path.basename(output_path)}"
     return os.path.join(dirname, basename)
+
 
 def convert(
     input_path,
@@ -159,7 +163,7 @@ def convert(
     known_files={},
 ):
     input_path = os.path.normpath(input_path)
-    
+
     if input_type == ".xfl":
         if os.path.isdir(input_path):
             input_folder = input_path
@@ -184,7 +188,7 @@ def convert(
         framerate = args.framerate
     else:
         framerate = reader.framerate
-    
+
     lock_fn = None
     if output_type == ".svg":
         renderer = SvgRenderer()
@@ -220,13 +224,13 @@ def convert(
         raise Exception(
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
         )
-    
+
     if output_folder:
         os.makedirs(output_folder, exist_ok=True)
-    
+
     if not lock_fn(output_path, known_files):
         if args.resume:
-            print('already completed', output_path)
+            print("already completed", output_path)
             return
 
     logging.basicConfig(
@@ -413,7 +417,7 @@ def main():
     )
     parser.add_argument(
         "--resume",
-        action='store_true',
+        action="store_true",
         default=False,
     )
 
