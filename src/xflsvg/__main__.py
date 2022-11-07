@@ -63,6 +63,23 @@ def lock_output(output_path, known_files):
     return True
 
 
+def lock_folder_output_fn(output_path):
+    output_existed = os.path.exists(output_path)
+
+    def _lock_fn(output_path, known_files):
+        lock_path = f"{output_path}.progress"
+        if os.path.exists(lock_path):
+            return True
+
+        if output_existed:
+            return False
+
+        open(lock_path, "w").close()
+        return True
+
+    return _lock_fn
+
+
 FRAMERANGE_REGEX = re.compile(r"(.*)_f\d+(-\d+)?(\.[^.]*)")
 
 
@@ -93,7 +110,10 @@ def lock_output_with_framerange(output_path, known_files):
 
 def unlock_output(output_path):
     lock_path = f"{output_path}.progress"
-    os.remove(f"{output_path}.progress")
+    try:
+        os.remove(f"{output_path}.progress")
+    except:
+        pass
 
 
 class SeqSplitter:
@@ -213,8 +233,8 @@ def convert(
     elif output_type == ".samples":
         renderer = SampleRenderer()
         output_folder = output_path
-        output_path = f"{output_path}/"
-        lock_fn = lock_output
+        output_path = output_path
+        lock_fn = lock_folder_output_fn(output_path)
     elif output_type == ".trace":
         renderer = RenderTracer()
         output_path = f"{output_path}{output_type}"
