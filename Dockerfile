@@ -47,5 +47,8 @@ RUN .venv/bin/pip wheel 'xflsvg@git+https://github.com/synthbot-anon/xflsvg.git'
 RUN rm -rf .cargo .rustup .cache/* .local/share/virtualenv/
 RUN mv bashrc-bak .bashrc
 
+# Additional installations for notebooks
+RUN pip install webdataset
+
 WORKDIR /host
 ENTRYPOINT ["python3", "-m", "xflsvg"]

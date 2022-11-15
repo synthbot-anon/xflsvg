@@ -289,8 +289,10 @@ class SvgRenderer(XflRenderer):
 
             if output_filename:
                 name, ext = splitext(output_filename)
-                sfx = suffix and "%04d" % i or ""
-                with open(f"{name}_f{sfx}{ext}", "w") as outp:
+                sfx = suffix and "f%04d" % i or ""
+                if os.path.basename(name) and sfx:
+                    sfx = "_" + sfx
+                with open(f"{name}{sfx}{ext}", "w") as outp:
                     image.write(outp, encoding="unicode")
 
             result.append(image)

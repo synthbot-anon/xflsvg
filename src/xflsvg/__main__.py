@@ -17,8 +17,15 @@ from .pngrenderer import PngRenderer
 from .rendertrace import RenderTracer, RenderTraceReader
 from .svgrenderer import SvgRenderer
 from .webprenderer import WebpRenderer
-from .samplerenderer import SampleReader, SampleRenderer
-from .util import pool, splitext, get_matching_path, InputFileSpec, OutputFileSpec
+from .samplerenderer import SampleRenderer
+from .util import (
+    pool,
+    splitext,
+    get_matching_path,
+    InputFileSpec,
+    OutputFileSpec,
+    SampleReader,
+)
 from .xflsvg import XflReader
 
 
@@ -170,6 +177,27 @@ def create_temp_file(output_path):
     return os.path.join(dirname, basename)
 
 
+def get_slice(param):
+    if param == "":
+        return slice(None, None, None)
+    if ":" not in param:
+        start = int(param)
+        if start == -1:
+            end = None
+        else:
+            end = start + 1
+        return slice(start, end, None)
+
+    def as_arg(p):
+        if p:
+            return int(p)
+        return None
+
+    args = list(map(as_arg, param.split(":")))
+    args = args + [None] * (3 - len(args))
+    return slice(*args)
+
+
 def convert(
     input_path,
     input_type,
@@ -231,7 +259,9 @@ def convert(
         output_folder = os.path.dirname(output_path)
         lock_fn = lock_output_with_framerange
     elif output_type == ".samples":
-        renderer = SampleRenderer()
+        renderer = SampleRenderer(
+            render_shapes=args.render_sample_shapes, filter=asset_filter
+        )
         output_folder = output_path
         output_path = output_path
         lock_fn = lock_folder_output_fn(output_path)
@@ -268,7 +298,8 @@ def convert(
 
     try:
         timeline = reader.get_timeline(input_asset)
-        frames = list(timeline)
+        sl = get_slice(args.frames)
+        frames = list(timeline)[sl]
         rendered_frames = []
 
         if args.no_stills and len(frames) <= 1:
@@ -440,6 +471,12 @@ def main():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--render-sample-shapes",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument("--frames", type=str, default=":")
 
     args = parser.parse_args()
     multiprocessing.set_start_method("spawn")

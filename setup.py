@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="xflsvg",
-    version="1.1.0",
+    version="2.1.0",
     description="""A tool for working with XFL and render traces.""",
     long_description_content_type="text/x-rst",
     long_description="""

@@ -4,8 +4,13 @@ import os
 import re
 from typing import Set, Tuple
 
-from .util import splitext, get_matching_path, InputFileSpec
-from .samplerenderer import create_filename, SampleReader
+from .util import (
+    splitext,
+    get_matching_path,
+    InputFileSpec,
+    create_filename,
+    SampleReader,
+)
 from .xflsvg import Frame
 
 
@@ -28,21 +33,41 @@ class AssetFilter:
         self.frame_empty = True
         self.seq_labels = {}
 
+        if isinstance(args, AssetFilter):
+            self.relevant_asset_patterns = args.relevant_asset_patterns
+            self.allow_relevant_assets = args.allow_relevant_assets
+            self._available_timelines = args._available_timelines
+            self._dest_paths_by_fla = args._dest_paths_by_fla
+            self._file_context = args._file_context[:]
+            self._switch_on_frame = args._switch_on_frame
+            self._mask_depth = args._mask_depth
+            self.frame_empty = args.frame_empty
+            self.seq_labels = args.seq_labels
+            self._render_allowed = args._render_allowed
+            self._default_render = args._default_render
+            self.isolated_items_by_fla = args.isolated_items_by_fla
+            self._has_isolated_task = args._has_isolated_task
+            self._in_isolated_item = args._in_isolated_item
+            self._finish_on_frame = args._finish_on_frame
+            self._finished = args._finished
+            return
+
         # Figure out which pieces to keep/remove within a render
         assert (not args.discard) or (
             not args.retain
         ), "You can't specify both --retain and --discard."
         if args.discard:
-            discard_list, fla_asset_relpaths = self._get_filtered_list(args.discard)
+            discard_list, fla_asset_relpaths = self._get_filtered_list(
+                args.discard, True
+            )
             self.relevant_asset_patterns = discard_list
             self.allow_relevant_assets = False
             self._default_render = True
             self._render_allowed = True
         elif args.retain:
-            retain_list, fla_asset_relpaths = self._get_filtered_list(args.retain)
+            retain_list, fla_asset_relpaths = self._get_filtered_list(args.retain, True)
             self.relevant_asset_patterns = retain_list
             self.allow_relevant_assets = True
-            self.allow_asset_fn = lambda x: x in retain_list
             self._default_render = False
             self._render_allowed = False
         else:
@@ -56,11 +81,13 @@ class AssetFilter:
 
         if args.isolate:
             isolate_list, self._fla_asset_destpath = self._get_filtered_list(
-                args.isolate
+                args.isolate, False
             )
             assert (
                 self._fla_asset_destpath != None
             ), "--isolate param can only be an .asset or .samples"
+
+            print("found", len(isolate_list), "assets to isolate")
 
             self.isolated_items_by_fla = defaultdict(list)
             for fla, asset in isolate_list:
@@ -81,13 +108,13 @@ class AssetFilter:
             self.seq_labels = SampleReader.load_samples(args.seq_labels.pathspec)[0]
 
     @classmethod
-    def _get_filtered_list(cls, input) -> Set[Tuple[str, str]]:
+    def _get_filtered_list(cls, input, allow_empty_fla=True) -> Set[Tuple[str, str]]:
         if input.ext == ".samples":
             (
                 labels_by_asset,
                 assets_by_label,
                 fla_asset_relpaths,
-            ) = SampleReader.load_samples(input.pathspec)
+            ) = SampleReader.load_samples(input.pathspec, allow_empty_fla)
             relevant_assets = labels_by_asset.keys()
         elif input.ext == ".asset":
             relevant_assets = {(None, input.path)}
@@ -180,16 +207,16 @@ class AssetFilter:
             return True
 
         found_match = False
-        for pattern_fla, pattern in self.relevant_asset_patterns:
-            if pattern_fla != fla and pattern_fla != None:
+        for fla_restriction, asset_pattern in self.relevant_asset_patterns:
+            if fla_restriction != fla and fla_restriction != None:
                 continue
 
-            if isinstance(pattern, str):
-                if asset == pattern:
+            if isinstance(asset_pattern, str):
+                if asset == asset_pattern:
                     found_match = True
                     break
-            elif isinstance(pattern, re.Pattern):
-                if pattern.match(asset):
+            elif isinstance(asset_pattern, re.Pattern):
+                if asset_pattern.match(asset):
                     found_match = True
                     break
 
@@ -333,3 +360,10 @@ class AssetFilter:
             renderer.pop_masked_render = prev_pop_masked_render
             renderer.on_frame_rendered = prev_rendered
             self._file_context.pop()
+
+    @contextmanager
+    def forked_render_context(self, renderer):
+        with self.filtered_render_context(
+            self._file_context[-1][0], renderer, self._file_context[-1][1]
+        ):
+            yield
