@@ -101,7 +101,7 @@ def lock_output_with_framerange(output_path, known_files):
     dir_cache = known_files.get(dirname, None)
     if dir_cache == None:
         known_files[dirname] = dir_cache = set()
-        for candidate in os.listdir(dirname):
+        for candidate in os.listdir(dirname or "."):
             match = FRAMERANGE_REGEX.match(candidate)
             if match:
                 dir_cache.add(match.group(1) + match.group(3))
@@ -220,6 +220,8 @@ def convert(
         reader = XflReader(input_folder)
     elif input_type == ".trace":
         reader = RenderTraceReader(input_path)
+    elif input_type == ".trace-zst":
+        reader = RenderTraceReader(input_path, compression="zstd")
     else:
         raise Exception(
             "The input needs to be either an xfl file (/path/to/file.xfl) or a render trace (/path/to/frames.json.trace)."
@@ -270,6 +272,13 @@ def convert(
         output_path = f"{output_path}{output_type}"
         output_folder = os.path.dirname(output_path)
         lock_fn = lock_output
+    elif output_type == ".trace-zst":
+        renderer = RenderTracer(
+            compression="zstd", compression_level=args.compression_level
+        )
+        output_path = f"{output_path}{output_type}"
+        output_folder = os.path.dirname(output_path)
+        lock_fn = lock_output
     else:
         raise Exception(
             "The output needs to be either an image path (/path/to/file.svg, /path/to/file.png) or a render trace (/path/to/folder)."
@@ -315,7 +324,7 @@ def convert(
                 asset_filter.frame_empty = True
                 sequence.append(frame.identifier)
 
-        if output_type == ".trace":
+        if output_type in (".trace", ".trace-zst"):
             document_info = {
                 "type": "clip",
                 "frame.id[]": sequence,
@@ -477,6 +486,7 @@ def main():
         default=False,
     )
     parser.add_argument("--frames", type=str, default=":")
+    parser.add_argument("--compression-level", type=int, default=None)
 
     args = parser.parse_args()
     multiprocessing.set_start_method("spawn")
@@ -485,6 +495,7 @@ def main():
     assert args.input.ext in (
         ".xfl",
         ".trace",
+        ".trace-zst",
     ), "Input arg must end in either .xfl or .trace"
     assert args.output.ext in (
         ".svg",
@@ -493,6 +504,7 @@ def main():
         ".webp",
         ".samples",
         ".trace",
+        ".trace-zst",
     ), "Output arg must end in either .svg, .png, .gif, .samples, or .trace"
 
     if not args.batch:

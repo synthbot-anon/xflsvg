@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
 from xfl2svg.shape.shape import json_normalize_xfl_domshape, dict_shape_to_svg
+import zstandard
 
 from .util import ColorObject
 from .xflsvg import DOMShape, Frame, MaskedFrame, XflRenderer, consume_frame_identifier
@@ -33,7 +34,7 @@ def shape_frame_to_dict(shape_frame, mask):
 
 
 class RenderTracer(XflRenderer):
-    def __init__(self):
+    def __init__(self, compression=None, compression_level=None):
         super().__init__()
         self.mask_depth = 0
         self.shapes = {}
@@ -42,6 +43,14 @@ class RenderTracer(XflRenderer):
         self._captured_frames = []
         self.labels = []
         self._recorded_frames = set()
+
+        if compression:
+            if compression == "zstd":
+                self.compress = zstandard.ZstdCompressor(
+                    level=compression_level or 6
+                ).compress
+        else:
+            self.compress = lambda x: x
 
     def add_label(self, label):
         self.labels.append(label)
@@ -123,24 +132,34 @@ class RenderTracer(XflRenderer):
         pass
 
     def compile(self, output_file=None, *args, **kwargs):
-        with open(output_file, "w") as outp:
-            json.dump(
-                {
-                    "shapes": self.shapes,
-                    "frames": self.frames,
-                    "labels": self.labels,
-                },
-                outp,
-                indent=2,
+        with open(output_file, "wb") as outp:
+            data = self.compress(
+                json.dumps(
+                    {
+                        "shapes": self.shapes,
+                        "frames": self.frames,
+                        "labels": self.labels,
+                    },
+                    indent=2,
+                ).encode("utf8")
             )
+            outp.write(data)
 
         return self.shapes, self.frames, self.labels
 
 
 class RenderTraceReader:
-    def __init__(self, input_path):
-        with open(input_path, "r") as inp:
-            data = json.load(inp)
+    def __init__(self, input_path, compression=None):
+        if compression:
+            if compression == "zstd":
+                self.decompress = zstandard.ZstdDecompressor().decompress
+            else:
+                raise Exception("unknown compression algorithm:", compression)
+        else:
+            self.decompress = lambda x: x
+
+        with open(input_path, "rb") as inp:
+            data = json.loads(self.decompress(inp.read()))
 
         self.shapes = data["shapes"]
         self.frames = data["frames"]

@@ -266,7 +266,9 @@ class AssetFilter:
                 self._finish_on_frame = None
 
             if not self._in_isolated_item:
-                pop_transform(Frame(), *args, **kwargs)
+                empty = Frame()
+                empty.identifier = frame.identifier
+                pop_transform(empty, *args, **kwargs)
             else:
                 pop_transform(frame, *args, **kwargs)
 
